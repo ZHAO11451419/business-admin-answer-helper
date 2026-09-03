@@ -1,0 +1,33 @@
+# Model weights / checkpoints (large, not for GitHub)
+*.safetensors
+*.bin
+*.gguf
+outputs/
+checkpoints/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv*/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Data caches
+.cache/
+wandb/
+runs/
+
+# Local environment
+.env
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Large/private data that must NOT be committed
+data/raw/*
+!data/raw/README.md

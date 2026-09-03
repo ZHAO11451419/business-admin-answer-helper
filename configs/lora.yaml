@@ -1,0 +1,44 @@
+# LLaMA-Factory LoRA fine-tuning config
+# Docs: https://github.com/hiyouga/LLaMA-Factory
+# Register the dataset in data/dataset_info.json before training:
+#   business_admin: { file_name: train.jsonl, columns: { prompt: instruction, query: input, response: output } }
+
+model_name_or_path: Qwen/Qwen2.5-7B-Instruct   # open base model
+adapter_name_or_path: null
+
+template: qwen                 # chat template of the base model
+finetuning_type: lora
+stage: sft
+
+dataset: business_admin        # registered dataset name
+cutoff_len: 2048
+max_samples: 100000
+overwrite_cache: true
+preprocessing_num_workers: 4
+
+# LoRA hyper-parameters
+lora_rank: 16
+lora_alpha: 32
+lora_dropout: 0.05
+lora_target: all
+
+# Training
+per_device_train_batch_size: 2
+gradient_accumulation_steps: 8
+learning_rate: 2.0e-4
+num_train_epochs: 3.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true
+ddp_timeout: 180000000
+
+# Output
+output_dir: outputs/business-admin-answer-helper
+logging_steps: 10
+save_steps: 500
+eval_steps: 500
+eval_strategy: steps
+plot_loss: true
+
+# Reproducibility
+seed: 42
