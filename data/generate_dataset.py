@@ -17,6 +17,7 @@ import os
 import random
 import statistics
 from question_bank import CONCEPTS, ESSAYS, LOCAL_CASES
+from gen_advanced import generate_advanced
 
 random.seed(42)  # reproducible
 
@@ -358,6 +359,10 @@ def main():
     pairs += CONCEPTS
     pairs += ESSAYS
     pairs += LOCAL_CASES
+
+    # Advanced accounting / analytics generators (batch 2)
+    adv_rng = random.Random(7)
+    pairs += generate_advanced(adv_rng)
 
     # Parameterised generators
     for _ in range(60):

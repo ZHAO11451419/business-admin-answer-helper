@@ -87,7 +87,7 @@ Fine-tuned model weights are published on Hugging Face: **[link to be added afte
 ## Roadmap
 
 - [x] Repository skeleton + answering-format spec
-- [x] Instruction dataset — **333 high-quality pairs** (215 calculation, 53 concept, 37 case, 28 essay), including **Malaysia-context cases** (NSRF, Bursa Malaysia, Maybank, MASB, BNM, local brands); all calculation answers are machine-computed and independently verified
+- [x] Instruction dataset — **445 high-quality pairs** (327 calculation, 53 concept, 37 case, 28 essay). Coverage: CVP, cost & financial ratios, statistics, cost classification, flexible budgets, cost-of-goods-manufactured schedules, weighted-average process costing, job costing, multi-product CVP, contribution-format statements, efficiency/return ratios, **Malaysia-context cases** (NSRF, Bursa Malaysia, Maybank, MASB, BNM, local brands). All calculation answers are machine-computed and independently re-verified
 - [ ] Fine-tune Qwen2.5-7B with LoRA
 - [ ] Evaluation report (format adherence + calculation accuracy)
 - [ ] Publish weights on Hugging Face
