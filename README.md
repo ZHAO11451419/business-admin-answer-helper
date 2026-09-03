@@ -87,7 +87,7 @@ Fine-tuned model weights are published on Hugging Face: **[link to be added afte
 ## Roadmap
 
 - [x] Repository skeleton + answering-format spec
-- [ ] Complete instruction dataset (target 300–800 high-quality pairs)
+- [x] Instruction dataset — **317 high-quality pairs** (215 calculation, 48 concept, 30 case, 24 essay); all calculation answers are machine-computed and independently verified
 - [ ] Fine-tune Qwen2.5-7B with LoRA
 - [ ] Evaluation report (format adherence + calculation accuracy)
 - [ ] Publish weights on Hugging Face
