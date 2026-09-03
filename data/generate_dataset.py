@@ -16,7 +16,7 @@ import json
 import os
 import random
 import statistics
-from question_bank import CONCEPTS, ESSAYS
+from question_bank import CONCEPTS, ESSAYS, LOCAL_CASES
 
 random.seed(42)  # reproducible
 
@@ -354,9 +354,10 @@ def main():
     rng = random.Random(42)
     pairs = []
 
-    # Hand-written concept + essay banks
+    # Hand-written concept + essay + local-case banks
     pairs += CONCEPTS
     pairs += ESSAYS
+    pairs += LOCAL_CASES
 
     # Parameterised generators
     for _ in range(60):
