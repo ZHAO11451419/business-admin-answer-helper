@@ -383,6 +383,21 @@ def main():
         assert p["type"] in {"calculation", "concept", "case", "essay"}, p["type"]
         assert p["instruction"].strip() and p["output"].strip()
 
+    # Global exact dedup by instruction (guards against generator collisions)
+    seen = set()
+    deduped = []
+    for p in pairs:
+        if p["instruction"] not in seen:
+            seen.add(p["instruction"])
+            deduped.append(p)
+    dropped = len(pairs) - len(deduped)
+    pairs = deduped
+    if dropped:
+        print(f"Deduplicated {dropped} exact-duplicate pair(s)")
+        types = {}
+        for p in pairs:
+            types[p["type"]] = types.get(p["type"], 0) + 1
+
     out = os.path.join(os.path.dirname(__file__), "train.jsonl")
     with open(out, "w", encoding="utf-8") as f:
         for p in pairs:

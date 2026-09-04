@@ -32,11 +32,16 @@ business-admin-answer-helper/
 ├── data/
 │   ├── train.jsonl        # Instruction dataset (question → high-score answer)
 │   ├── build_dataset.py   # Script to build train.jsonl from raw materials
+│   ├── generate_dataset.py# Parameterised generators + hand-written banks
+│   ├── gen_advanced.py    # Advanced accounting/analytics generators
 │   └── raw/               # Cleaned, copyright-safe raw materials only
 ├── configs/
 │   └── lora.yaml          # LoRA fine-tuning config (LLaMA-Factory)
+├── notebooks/
+│   └── finetune_qwen25_colab.ipynb  # One-click fine-tune on free Colab T4
 ├── scripts/
-│   ├── train.sh           # Fine-tuning entrypoint
+│   ├── prepare_dataset.py # Validate + stratified train/val split (no torch needed)
+│   ├── train_lora.py      # Standard LoRA/QLoRA SFT (transformers + peft + trl)
 │   ├── evaluate.py        # Evaluate format adherence + calculation accuracy
 │   └── serve.py           # Local Gradio demo
 ├── examples/
@@ -57,15 +62,27 @@ business-admin-answer-helper/
 
 ## Quick start
 
-### Fine-tune (requires a GPU with ~24GB VRAM, or cloud GPU)
+### Recommended: fine-tune on free Colab (T4 GPU)
+
+1. Open [`notebooks/finetune_qwen25_colab.ipynb`](notebooks/finetune_qwen25_colab.ipynb) in Google Colab
+2. Runtime → Change runtime type → **T4 GPU**
+3. Run the cells top to bottom (~25–40 min): installs deps, downloads `train.jsonl` from this repo, loads Qwen2.5-7B in 4-bit (QLoRA), trains 3 epochs, merges the adapter, and lets you test the model inline
+4. Optionally push the merged weights to Hugging Face (weights are too large for GitHub)
+
+### Alternative: train locally / on any GPU
 
 ```bash
-# Option 1: LLaMA-Factory
-pip install llama-factory
-llamafactory-cli train configs/lora.yaml
+pip install -U torch transformers peft trl datasets accelerate bitsandbytes
 
-# Option 2: Unsloth
-bash scripts/train.sh
+# full QLoRA run
+python scripts/prepare_dataset.py
+python scripts/train_lora.py \
+    --model_name Qwen/Qwen2.5-7B-Instruct \
+    --data data/train.jsonl --output_dir outputs/business-admin-answer-helper \
+    --epochs 3 --lr 2e-4 --batch_size 2 --grad_accum 8 --use_4bit
+
+# 1-step smoke test (no GPU needed) to verify the pipeline
+python scripts/train_lora.py --smoke --model_name Qwen/Qwen2.5-0.5B-Instruct
 ```
 
 ### Evaluate
@@ -87,8 +104,9 @@ Fine-tuned model weights are published on Hugging Face: **[link to be added afte
 ## Roadmap
 
 - [x] Repository skeleton + answering-format spec
-- [x] Instruction dataset — **445 high-quality pairs** (327 calculation, 53 concept, 37 case, 28 essay). Coverage: CVP, cost & financial ratios, statistics, cost classification, flexible budgets, cost-of-goods-manufactured schedules, weighted-average process costing, job costing, multi-product CVP, contribution-format statements, efficiency/return ratios, **Malaysia-context cases** (NSRF, Bursa Malaysia, Maybank, MASB, BNM, local brands). All calculation answers are machine-computed and independently re-verified
-- [ ] Fine-tune Qwen2.5-7B with LoRA
+- [x] Instruction dataset — **444 high-quality pairs** (326 calculation, 53 concept, 37 case, 28 essay). Coverage: CVP, cost & financial ratios, statistics, cost classification, flexible budgets, cost-of-goods-manufactured schedules, weighted-average process costing, job costing, multi-product CVP, contribution-format statements, efficiency/return ratios, **Malaysia-context cases** (NSRF, Bursa Malaysia, Maybank, MASB, BNM, local brands). All calculation answers are machine-computed and independently re-verified
+- [x] Training pipeline — `scripts/prepare_dataset.py` + `scripts/train_lora.py` + `notebooks/finetune_qwen25_colab.ipynb` (verified data pipeline & 1-step smoke run)
+- [ ] Fine-tune Qwen2.5-7B with LoRA on GPU
 - [ ] Evaluation report (format adherence + calculation accuracy)
 - [ ] Publish weights on Hugging Face
 - [ ] Multi-course question bank
