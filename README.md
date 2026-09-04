@@ -28,7 +28,8 @@ business-admin-answer-helper/
 ├── README.md              # This file
 ├── LICENSE                # Apache-2.0
 ├── docs/
-│   └── answering-guide.md # The answering-format specification (core asset)
+│   ├── answering-guide.md # The answering-format specification (core asset)
+│   └── TRAINING_GUIDE.md  # Full training/evaluate/publish runbook
 ├── data/
 │   ├── train.jsonl        # Instruction dataset (question → high-score answer)
 │   ├── build_dataset.py   # Script to build train.jsonl from raw materials
@@ -61,6 +62,9 @@ business-admin-answer-helper/
 ```
 
 ## Quick start
+
+> 📖 **Full runbook**: see [`docs/TRAINING_GUIDE.md`](docs/TRAINING_GUIDE.md) for the
+> complete train → evaluate → publish workflow, parameter suggestions and FAQ.
 
 ### Recommended: fine-tune on free Colab (T4 GPU)
 
