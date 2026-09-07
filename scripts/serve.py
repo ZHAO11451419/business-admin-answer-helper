@@ -3,9 +3,11 @@
 Gradio 网页界面：在浏览器里与微调后的工商管理答题助手对话。
 
 用法：
-  pip install -U gradio transformers torch peft bitsandbytes
+  pip install -U "gradio<6" transformers torch peft bitsandbytes
   python scripts/serve.py --adapter zhaoweichang/business-admin-answer-helper
   # 打开 http://127.0.0.1:7860 即可对话
+
+注意：请使用 gradio 5.x（gradio 6.x 的前端复制/操作按钮存在兼容性问题）。
 
 本地路径示例：
   python scripts/serve.py --adapter D:/ai/outputs/business-admin-answer-helper-3b/adapter \
