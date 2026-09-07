@@ -62,17 +62,33 @@ def main():
     model, tokenizer = build(args.base, args.adapter)
 
     def respond(message, history):
+        # gradio 6.x 的 history 是 openai 风格字典列表 [{"role","content"}]；
+        # 兼容旧版元组列表 (user, assistant) 以防版本差异。
         messages = [{"role": "user", "content": message}]
-        for user, assistant in history:
-            messages.append({"role": "user", "content": user})
-            messages.append({"role": "assistant", "content": assistant})
+        for item in history[-12:]:  # 只保留最近 12 轮，防止 prompt 无限膨胀
+            if isinstance(item, dict):
+                role = item.get("role", "user")
+                content = item.get("content", "")
+                if isinstance(content, list):  # multimodal 内容取纯文本
+                    content = " ".join(
+                        c.get("text", "") for c in content
+                        if isinstance(c, dict) and c.get("type") == "text"
+                    )
+                messages.append({"role": role, "content": content})
+            else:  # 旧版 (user, assistant) 元组
+                user, assistant = item
+                messages.append({"role": "user", "content": user})
+                messages.append({"role": "assistant", "content": assistant})
         prompt = tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True)
         inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-        out = model.generate(**inputs, max_new_tokens=512, do_sample=False,
-                             pad_token_id=tokenizer.eos_token_id)
-        return tokenizer.decode(out[0][inputs["input_ids"].shape[1]:],
-                                skip_special_tokens=True)
+        try:
+            out = model.generate(**inputs, max_new_tokens=512, do_sample=False,
+                                 pad_token_id=tokenizer.eos_token_id)
+            return tokenizer.decode(out[0][inputs["input_ids"].shape[1]:],
+                                    skip_special_tokens=True)
+        finally:
+            torch.cuda.empty_cache()  # 释放显存，避免连续对话累积
 
     gr.ChatInterface(
         respond,
