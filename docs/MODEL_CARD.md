@@ -10,7 +10,7 @@ tags:
 language:
   - en
 datasets:
-  - ZHAO11451419/business-admin-answer-helper
+  - zhaoweichang/business-admin-answer-helper
 pipeline_tag: text-generation
 ---
 
@@ -49,7 +49,7 @@ bnb = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.bfloat1
 base = AutoModelForCausalLM.from_pretrained(
     "Qwen/Qwen2.5-3B-Instruct", quantization_config=bnb,
     device_map="auto", torch_dtype=torch.bfloat16)
-model = PeftModel.from_pretrained(base, "ZHAO11451419/business-admin-answer-helper")
+model = PeftModel.from_pretrained(base, "zhaoweichang/business-admin-answer-helper")
 tok = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-3B-Instruct")
 
 q = "Calculate the break-even point in units for Bersatu Limited. Price RM1.50, variable cost RM0.75, fixed costs RM15,000."

@@ -112,10 +112,11 @@ python scripts/serve.py --model path/to/adapter
 
 ## Model weights
 
-Fine-tuned weights are published on Hugging Face: **[link to be added after upload]**
+Fine-tuned weights are published on Hugging Face: **[zhaoweichang/business-admin-answer-helper](https://huggingface.co/zhaoweichang/business-admin-answer-helper)**
 
-> The published model is a **LoRA adapter** (plus a merged 16-bit model) built on
+> The published model is a **LoRA adapter** built on
 > Qwen2.5-3B-Instruct, trained on this repository's 444-pair instruction dataset.
+> Usage snippet and full metrics are on the model page.
 
 ## Roadmap
 
