@@ -31,10 +31,23 @@ _TRANSLATE = str.maketrans({"÷": "/", "×": "*", "−": "-", "—": "-"})
 _NUM = r"(?:[A-Za-z]*\d[\d,]*(?:\.\d+)?)"   # 数字，允许 RM/units 等字母前缀
 # 操作数：纯数字，或"括号内至少两操作数一运算符"的复合表达式
 _ATOM = rf"(?:\({_NUM}(?:\s*[\/÷×\*+\-−]\s*{_NUM})+\)|{_NUM})"
-# 表达式 = 结果：表达式为"至少两个操作数 + 至少一个运算符"，结果紧随等号
+# 表达式 = 结果：表达式为"至少两个操作数 + 至少一个运算符"，结果紧随等号。
+# 分步式中间结果（"(A−B) ÷ C = RM20,000 ÷ RM25,000 = 0.80" 中的 RM20,000）
+# 在 _iter_expr_eq 里用手动后置检查拒绝，避免正则断言被回溯绕过。
 _EXPR_EQ = re.compile(
     rf"({_ATOM}(?:\s*[\/÷×\*+\-−]\s*{_ATOM})+)\s*=\s*({_NUM})"
 )
+
+# 结果数字后紧跟运算符 + 数字 → 这是分步式中间结果，不是最终结果
+_TAIL_OP = re.compile(r"^\s*[÷×]\s*[A-Za-z]*\d")
+
+
+def _iter_expr_eq(text):
+    """迭代"表达式 = 结果"，跳过分步式中间结果（结果后紧跟 ÷/× 运算符）。"""
+    for m in _EXPR_EQ.finditer(text):
+        if _TAIL_OP.match(text[m.end():]):
+            continue
+        yield m
 
 
 class _SafeEval(ast.NodeVisitor):
@@ -129,7 +142,7 @@ def fix_arithmetic(text: str):
     corrections = []
     fixed = text
     last_end = 0
-    for m in _EXPR_EQ.finditer(fixed):
+    for m in _iter_expr_eq(fixed):
         expr_raw, result_raw = m.group(1), m.group(2)
         expr = _normalise(expr_raw)
         try:
@@ -138,17 +151,40 @@ def fix_arithmetic(text: str):
             continue
         if not isinstance(value, (int, float)) or value != value:  # 非数值/NaN
             continue
+        if re.search(r"\bQ[1-3]\b", expr_raw):
+            # 统计符号（Q1/Q3 四分位数等）会被字母前缀误解析，跳过
+            continue
+        is_pct = bool(re.match(r"\s*%", fixed[m.end():]))
+        value_disp = value * 100 if is_pct else value
+        stated = re.sub(r"[^\d.]", "", result_raw)
+        try:
+            stated_f = float(stated)
+        except ValueError:
+            continue
+        if stated_f:
+            if "." not in stated and abs(value_disp - stated_f) < 1.0:
+                # 整数取整容忍：units 向上取整（5,556 ≈ 5,555.56）或百分比取整（117% ≈ 116.7%）
+                continue
+            if "." in stated and not is_pct and abs(value_disp - stated_f) < 0.01:
+                # 小数四舍五入容忍（0.97 ≈ 0.965）；含小数比率仍严格修正
+                continue
+        if value < 0:
+            # 负结果跳过：业务语境中差异/变化常取绝对值（如有利差异 RM40,000），
+            # 误判代价高于漏判。
+            continue
         correct = _fmt_result(value, result_raw)
-        if correct != result_raw:
-            old_frag = m.group(0)
-            new_frag = f"{expr_raw.strip()} = {correct}"
+        correct_disp = f"{_fmt_result(value * 100, result_raw)}%" if is_pct else correct
+        if correct_disp != (result_raw + ("%" if is_pct else "")):
+            old_frag = m.group(0) + ("%" if is_pct else "")
+            new_frag = f"{expr_raw.strip()} = {correct_disp}"
             corrections.append((old_frag, new_frag))
             fixed = fixed.replace(old_frag, new_frag, 1)
             # 同值传播：修正点之后出现的孤立旧值（解读句重复）一并纠正
             result_plain = result_raw.lstrip("A-Za-z")
-            if result_plain != correct.lstrip("A-Za-z"):
+            correct_plain = correct_disp.lstrip("A-Za-z").rstrip("%")
+            if result_plain != correct_plain:
                 start = fixed.find(new_frag, last_end) + len(new_frag)
-                fixed, _ = _propagate(fixed, result_plain, correct.lstrip("A-Za-z"), start)
+                fixed, _ = _propagate(fixed, result_plain, correct_plain, start)
         last_end = m.end()
     return fixed, corrections
 
@@ -167,6 +203,22 @@ def _self_test():
         # 同值传播：解读句里重复的旧错误值也应修正
         ("= (RM54,000 + RM18,000) ÷ RM4.50 = 20,000 units. The firm must sell 20,000 units to earn RM18,000.",
          "= (RM54,000 + RM18,000) ÷ RM4.50 = 16,000 units. The firm must sell 16,000 units to earn RM18,000."),
+        # 分步式中间结果：不把 "(A−B) ÷ C = 中间值" 当最终结果
+        ("Quick Ratio = (RM40,000 − RM20,000) ÷ RM25,000 = RM20,000 ÷ RM25,000 = 0.80",
+         None),
+        # 统计符号 Q1/Q3：不误解析
+        ("IQR = Q3 − Q1 = 69. Interquartile range is 69.", None),
+        # 整数取整容忍：5,556 ≈ 5,555.56 不判错
+        ("Break-even = RM50,000 ÷ RM9 = 5,556 units", None),
+        # 含小数的比率仍严格修正
+        ("Quick ratio = (RM40,000 − RM12,000) ÷ RM25,000 = 1.00",
+         "Quick ratio = (RM40,000 − RM12,000) ÷ RM25,000 = 1.12"),
+        # 百分比：117% ≈ 116.67% 属取整，不改；9% vs 90% 真错则修正
+        ("Debt ratio = (RM90,000 + RM50,000) ÷ RM120,000 = 117%", None),
+        ("Margin = RM10,000 ÷ RM20,000 = 9%",
+         "Margin = RM10,000 ÷ RM20,000 = 50%"),
+        # 小数四舍五入：0.97 ≈ 0.965 不改
+        ("r = 677.00 ÷ (17.89 × 39.22) = 0.97", None),
     ]
     ok = True
     for src, expect in samples:

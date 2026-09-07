@@ -282,7 +282,7 @@ def gen_stats(rng):
             pv = round(s[lo - 1] + frac * (s[lo] - s[lo - 1]), 1)
             method = (f"Lp = p/100 × (n + 1) = {p}/100 × ({n} + 1) = {lp}. "
                       f"The {p}th percentile lies between the {lo}th value ({s[lo - 1]}) and the {lo + 1}th value ({s[lo]}), "
-                      f"so P{p} = {s[lo - 1]} + {frac:.1f} × ({s[lo]} − {s[lo - 1]}) = {pv}.")
+                      f"so P{p} = {s[lo - 1]} + {frac:.2f} × ({s[lo]} − {s[lo - 1]}) = {pv}.")
         q = (f"{company} gathered these {n} sample observations: {', '.join(map(str, data))}. "
              f"Calculate the {p}th percentile using the formula Lp = p/100 × (n + 1).")
         ans = (f"Step 1: Arrange values in ascending order: {', '.join(map(str, s))}. "
