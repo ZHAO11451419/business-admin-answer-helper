@@ -78,16 +78,25 @@ business-admin-answer-helper/
 ```bash
 pip install -U torch transformers peft trl datasets accelerate bitsandbytes
 
-# full QLoRA run
+# full QLoRA run (verified on RTX 4060 8GB, ~12 min for 3 epochs, 3B model)
 python scripts/prepare_dataset.py
 python scripts/train_lora.py \
-    --model_name Qwen/Qwen2.5-7B-Instruct \
+    --model_name Qwen/Qwen2.5-3B-Instruct \
     --data data/train.jsonl --output_dir outputs/business-admin-answer-helper \
-    --epochs 3 --lr 2e-4 --batch_size 2 --grad_accum 8 --use_4bit
+    --epochs 3 --lr 2e-4 --batch_size 2 --grad_accum 8 \
+    --max_length 2048 --use_4bit --grad_ckpt
 
+# 7B on a 16GB GPU: same command with Qwen/Qwen2.5-7B-Instruct
 # 1-step smoke test (no GPU needed) to verify the pipeline
 python scripts/train_lora.py --smoke --model_name Qwen/Qwen2.5-0.5B-Instruct
 ```
+
+> **Windows notes** (already handled inside `train_lora.py`):
+> - weight loading is forced to a single thread (`GLOBAL_WORKERS=1`) to avoid
+>   segfaults from parallel safetensors mmap→CUDA copies;
+> - `max_steps` defaults to `-1` (epoch-driven) for transformers 5.x compat;
+> - a machine with ~16GB RAM and a small pagefile **cannot** load the merged
+>   16-bit model for inference — use 4-bit loading or a bigger pagefile.
 
 ### Evaluate
 
@@ -103,14 +112,17 @@ python scripts/serve.py --model path/to/adapter
 
 ## Model weights
 
-Fine-tuned model weights are published on Hugging Face: **[link to be added after training]**
+Fine-tuned weights are published on Hugging Face: **[link to be added after upload]**
+
+> The published model is a **LoRA adapter** (plus a merged 16-bit model) built on
+> Qwen2.5-3B-Instruct, trained on this repository's 444-pair instruction dataset.
 
 ## Roadmap
 
 - [x] Repository skeleton + answering-format spec
 - [x] Instruction dataset — **444 high-quality pairs** (326 calculation, 53 concept, 37 case, 28 essay). Coverage: CVP, cost & financial ratios, statistics, cost classification, flexible budgets, cost-of-goods-manufactured schedules, weighted-average process costing, job costing, multi-product CVP, contribution-format statements, efficiency/return ratios, **Malaysia-context cases** (NSRF, Bursa Malaysia, Maybank, MASB, BNM, local brands). All calculation answers are machine-computed and independently re-verified
 - [x] Training pipeline — `scripts/prepare_dataset.py` + `scripts/train_lora.py` + `notebooks/finetune_qwen25_colab.ipynb` (verified data pipeline & 1-step smoke run)
-- [ ] Fine-tune Qwen2.5-7B with LoRA on GPU
+- [x] **Fine-tune on a real GPU (verified)** — Qwen2.5-**3B**-Instruct, QLoRA 4-bit, 3 epochs, on an RTX 4060 Laptop 8GB: train loss 2.46→0.61, **eval token accuracy 85.7%** (eval loss 0.56). 7B is also supported; on Windows set `GLOBAL_WORKERS=1` (see `docs/TRAINING_GUIDE.md` § Windows notes)
 - [ ] Evaluation report (format adherence + calculation accuracy)
 - [ ] Publish weights on Hugging Face
 - [ ] Multi-course question bank

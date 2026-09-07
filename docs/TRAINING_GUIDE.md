@@ -40,17 +40,31 @@ pip install -U torch transformers peft trl datasets accelerate bitsandbytes
 # 1) 校验 + 分层划分（生成 train/val_prepared.jsonl）
 python scripts/prepare_dataset.py
 
-# 2) 完整 QLoRA 训练
+# 2) 完整 QLoRA 训练（已在 RTX 4060 Laptop 8GB 上验证，3B 约 12 分钟 / 3 epoch）
 python scripts/train_lora.py \
-    --model_name Qwen/Qwen2.5-7B-Instruct \
+    --model_name Qwen/Qwen2.5-3B-Instruct \
     --data data/train.jsonl \
     --output_dir outputs/business-admin-answer-helper \
-    --epochs 3 --lr 2e-4 --batch_size 2 --grad_accum 8 --use_4bit
+    --epochs 3 --lr 2e-4 --batch_size 2 --grad_accum 8 \
+    --max_length 2048 --use_4bit --grad_ckpt
+
+# 7B 版（≥16GB 显存）：把 --model_name 换成 Qwen/Qwen2.5-7B-Instruct，建议 --max_length 1024
 ```
 
 产物：
 - `outputs/.../adapter/` — LoRA 适配器（小，可放进 GitHub 之外另行存档）
 - `outputs/.../merged/` — 合并后的 16-bit 独立模型（发布用）
+
+### Windows 实战注意事项（已验证）
+
+| 坑 | 现象 | 已在 `train_lora.py` 内处理 |
+|---|---|---|
+| 并行 safetensors mmap→CUDA 拷贝段错误 | 加载 7B/3B 时进程崩溃 `0xC0000005` | 强制单线程加载（`GLOBAL_WORKERS=1`），稳定通过 |
+| transformers 5.16 `max_steps=None` | `TypeError: '>' not supported between NoneType and int` | 默认 `max_steps=-1`（epoch 驱动） |
+| 内存不足（16GB 机器、小 pagefile） | 加载 merged 16-bit 模型推理时卡死或 `os error 1455 页面文件太小` | 推理请用 4-bit 加载；训练本身（模型在显存）不受影响 |
+| Python 3.14 | 旧版 torch 无 cp314 wheel | 装最新 cu128 版 torch；transformers≥5.16 适配 |
+
+实测结果（3B，444 对，3 epoch）：train loss 2.46→0.61；eval loss 0.56；**eval token 准确率 85.7%**。
 
 ### 无 GPU 冒烟验证（可选）
 
