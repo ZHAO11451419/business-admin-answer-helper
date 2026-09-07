@@ -32,6 +32,11 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from peft import PeftModel
 
+try:
+    from calc_assist import fix_arithmetic
+except ImportError:  # 以模块方式导入时
+    from scripts.calc_assist import fix_arithmetic
+
 DEFAULT_BASE = "Qwen/Qwen2.5-3B-Instruct"
 DEFAULT_ADAPTER = "zhaoweichang/business-admin-answer-helper"
 
@@ -69,6 +74,16 @@ def ask(model, tok, question: str, max_new: int = 400) -> str:
     return tok.decode(out[0][len(inp["input_ids"][0]):], skip_special_tokens=True)
 
 
+def _show(answer: str) -> str:
+    """输出前经计算器辅助核验：修正算术错误并汇报修正明细。"""
+    fixed, corrections = fix_arithmetic(answer)
+    if corrections:
+        print(f"[calculator-assist] 已修正 {len(corrections)} 处算术错误:", flush=True)
+        for old, new in corrections:
+            print(f"    {old!r} -> {new!r}", flush=True)
+    return fixed
+
+
 def main():
     parser = argparse.ArgumentParser(description="工商管理答题助手 - 本地命令行推理")
     parser.add_argument("--base", default=DEFAULT_BASE, help="基座模型名或本地路径")
@@ -81,7 +96,8 @@ def main():
 
     if args.question:
         print("\n=== Q:", args.question, flush=True)
-        print("=== A:", ask(model, tok, args.question, args.max_new), flush=True)
+        answer = ask(model, tok, args.question, args.max_new)
+        _show(answer)
         return
 
     print("\n交互模式：输入问题，Ctrl+C 退出。", flush=True)
@@ -93,7 +109,7 @@ def main():
             break
         if not q:
             continue
-        print("A>", ask(model, tok, q, args.max_new), flush=True)
+        print("A>", _show(ask(model, tok, q, args.max_new)), flush=True)
 
 
 if __name__ == "__main__":

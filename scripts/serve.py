@@ -29,6 +29,11 @@ from peft import PeftModel
 
 import gradio as gr
 
+try:
+    from calc_assist import fix_arithmetic
+except ImportError:  # 以模块方式导入时
+    from scripts.calc_assist import fix_arithmetic
+
 DEFAULT_BASE = "Qwen/Qwen2.5-3B-Instruct"
 DEFAULT_ADAPTER = "zhaoweichang/business-admin-answer-helper"
 
@@ -87,8 +92,15 @@ def main():
         try:
             out = model.generate(**inputs, max_new_tokens=512, do_sample=False,
                                  pad_token_id=tokenizer.eos_token_id)
-            return tokenizer.decode(out[0][inputs["input_ids"].shape[1]:],
-                                    skip_special_tokens=True)
+            raw = tokenizer.decode(out[0][inputs["input_ids"].shape[1]:],
+                                   skip_special_tokens=True)
+            # 计算器辅助：核验并修正算术错误
+            fixed, corrections = fix_arithmetic(raw)
+            if corrections:
+                print(f"[calculator-assist] corrected {len(corrections)}:", flush=True)
+                for old, new in corrections:
+                    print(f"    {old!r} -> {new!r}", flush=True)
+            return fixed
         finally:
             torch.cuda.empty_cache()  # 释放显存，避免连续对话累积
 
