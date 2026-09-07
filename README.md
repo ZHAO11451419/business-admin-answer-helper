@@ -65,6 +65,7 @@ business-admin-answer-helper/
 ## 快速开始
 
 > 📖 **完整手册**：见 [`docs/TRAINING_GUIDE.md`](docs/TRAINING_GUIDE.md)（训练 → 评估 → 发布的完整流程、参数建议和常见问题）。
+> 🚀 **运行模型**：见 [`docs/USAGE.md`](docs/USAGE.md)（三种运行方式：命令行 / 网页界面 / Colab 在线）。
 
 ### 推荐：在免费 Colab（T4 GPU）上微调
 
