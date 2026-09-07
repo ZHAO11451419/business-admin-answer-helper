@@ -8,36 +8,33 @@ tags:
   - qlora
   - sft
 language:
+  - zh
   - en
 datasets:
   - zhaoweichang/business-admin-answer-helper
 pipeline_tag: text-generation
 ---
 
-# Business Admin Answer Helper (BAH) — LoRA adapter
+# 工商管理答题助手（BAH）— LoRA 适配器
 
-A **LoRA adapter** fine-tuned from `Qwen/Qwen2.5-3B-Instruct` on a 444-pair
-instruction dataset distilled from real UPM business-administration coursework
-answering conventions.
+基于 `Qwen/Qwen2.5-3B-Instruct` 微调的 **LoRA 适配器**，训练数据来自真实 UPM 工商管理课程答题规范提炼的 444 对指令数据集。
 
-It answers business-school questions the way a high-scoring student would:
-correct answering format, full calculation steps, business interpretation, and
-proper citations — not just raw content.
+它像高分学生一样回答商学院问题：正确的答题格式、完整的计算步骤、商业解读和规范引用——而不只是罗列内容。
 
-## Training
+## 训练信息
 
-| Item | Value |
+| 项目 | 数值 |
 |---|---|
-| Base model | Qwen/Qwen2.5-3B-Instruct |
-| Method | QLoRA (4-bit NF4, double quant), LoRA r=16 α=32, all linear modules |
-| Data | 444 pairs (326 calculation, 53 concept, 37 case, 28 essay), train/val 95/5 split |
-| Epochs / LR / scheduler | 3 / 2e-4 / cosine, warmup 10% |
-| Hardware | NVIDIA RTX 4060 Laptop 8GB, ~12 min |
-| Train loss | 2.46 → 0.61 |
-| Eval loss | 0.56 |
-| Eval token accuracy | **85.7%** |
+| 基座模型 | Qwen/Qwen2.5-3B-Instruct |
+| 方法 | QLoRA（4-bit NF4，双重量化），LoRA r=16 α=32，全部线性模块 |
+| 数据 | 444 对（计算 326 / 概念 53 / 案例 37 / 论述 28），训练/验证 95/5 划分 |
+| Epoch / 学习率 / 调度器 | 3 / 2e-4 / cosine，warmup 10% |
+| 硬件 | NVIDIA RTX 4060 Laptop 8GB，约 12 分钟 |
+| 训练 loss | 2.46 → 0.61 |
+| 验证 loss | 0.56 |
+| 验证集 token 准确率 | **85.7%** |
 
-## Usage
+## 使用方法
 
 ```python
 import torch
@@ -58,13 +55,8 @@ out = model.generate(**tok(s, return_tensors="pt").to(model.device), max_new_tok
 print(tok.decode(out[0][len(tok(s)["input_ids"][0]):], skip_special_tokens=True))
 ```
 
-Also available: a **merged 16-bit** version of the same model
-(`...-merged`, ~2.6GB).
+也提供：同一模型的**合并 16-bit 完整版**（`...-merged`，约 2.6GB）。
 
-## Disclaimer
+## 免责声明
 
-Training data is derived from openly described answering conventions and
-original example solutions; it contains no copyrighted textbook content or
-personal information. Users must comply with their institution's
-academic-integrity policy and verify all numbers, citations, and facts before
-submission.
+训练数据来自公开描述的答题规范和原创示例解答，**不含**受版权保护的教材内容或个人隐私信息。使用者须遵守所在院校的学术诚信政策，并在提交前核对所有数字、引用和事实。

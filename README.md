@@ -1,58 +1,59 @@
-# Business Admin Answer Helper (BAH)
+# 工商管理答题助手（BAH）
 
-A fine-tuned open-source LLM that answers **business administration coursework** the way a high-scoring UPM business student would — with the correct answering format, full calculation steps, business interpretation, and proper citations.
+一个微调过的开源大语言模型，能够以高分 UPM 工商管理学生的答题方式回答**工商管理课程作业**——包含正确的答题格式、完整的计算步骤、商业解读和规范的引用。
 
-Built by distilling real assignment briefs, completed coursework, and tutorial questions into an instruction dataset, then fine-tuning an open-source base model (Qwen / DeepSeek / Llama) with LoRA.
+构建方式：把真实的作业任务书、已完成作业和习题整理成指令数据集，再用 LoRA 微调开源基座模型（Qwen / DeepSeek / Llama）。
 
-> **Philosophy**: This project does not just "write answers" — it teaches the *format* and *reasoning pattern* that business-school markers reward: formula → substitution → result → business meaning, clear judgements with evidence, local Malaysian sources, and Harvard-style references.
+> **核心理念**：这个项目不只是"写答案"——它教会模型商学院评分者真正看重的*格式*和*推理模式*：公式 → 代入 → 结果 → 商业含义，有证据的明确判断，马来西亚本地信源，哈佛式引用。
 
 ---
 
-## Why this project exists
+## 为什么做这个项目
 
-Business-school assignments lose marks not because the student lacks ideas, but because the **answering format** is wrong. This project captures the answering conventions observed across real UPM coursework (Accounting ACN3101, Business Analytics MGM3165, HRM, Franchising, Commercial Law, Marketing) and bakes them into an open model, so anyone can get a *format-correct, high-scoring first draft* in one pass.
+商学院作业丢分往往不是因为学生没有想法，而是因为**答题格式不对**。本项目把真实 UPM 课程作业中观察到的答题规范（会计 ACN3101、商业分析 MGM3165、人力资源管理、特许经营、商法、市场营销等）固化到一个开源模型里，让任何人都能一步得到一份**格式正确、得分高的初稿**。
 
-## What it can do
+## 它能做什么
 
-| Capability | Example |
+| 能力 | 示例 |
 |---|---|
-| Calculation questions | Break-even, CVP, job costing, equivalent units, ratios — with full workings |
-| Concept & essay questions | Define → distinguish → discuss, numbered structure, business interpretation |
-| Case analysis | Clear judgement (should/should not) + evidence + recommendation |
-| Report structure | Cover page → sections → conclusion → references (Harvard style) |
+| 计算题 | 盈亏平衡、本量利分析、分批成本法、约当产量、财务比率——含完整计算过程 |
+| 概念题与论述题 | 定义 → 区分 → 讨论，编号结构，商业解读 |
+| 案例分析题 | 明确判断（应该/不应该）+ 证据 + 建议 |
+| 报告结构 | 封面 → 章节 → 结论 → 参考文献（哈佛格式） |
 
-## Repository structure
+## 仓库结构
 
 ```
 business-admin-answer-helper/
-├── README.md              # This file
+├── README.md              # 本文件
 ├── LICENSE                # Apache-2.0
 ├── docs/
-│   ├── answering-guide.md # The answering-format specification (core asset)
-│   └── TRAINING_GUIDE.md  # Full training/evaluate/publish runbook
+│   ├── answering-guide.md # 答题格式规范（核心资产）
+│   ├── TRAINING_GUIDE.md  # 训练/评估/发布完整手册
+│   └── MODEL_CARD.md      # Hugging Face 模型卡
 ├── data/
-│   ├── train.jsonl        # Instruction dataset (question → high-score answer)
-│   ├── build_dataset.py   # Script to build train.jsonl from raw materials
-│   ├── generate_dataset.py# Parameterised generators + hand-written banks
-│   ├── gen_advanced.py    # Advanced accounting/analytics generators
-│   └── raw/               # Cleaned, copyright-safe raw materials only
+│   ├── train.jsonl        # 指令数据集（问题 → 高分答案）
+│   ├── build_dataset.py   # 从原始材料构建 train.jsonl 的脚本
+│   ├── generate_dataset.py# 参数化生成器 + 人工题库
+│   ├── gen_advanced.py    # 高级会计/分析题生成器
+│   └── raw/               # 清洗后、版权安全的原始材料
 ├── configs/
-│   └── lora.yaml          # LoRA fine-tuning config (LLaMA-Factory)
+│   └── lora.yaml          # LoRA 微调配置（LLaMA-Factory）
 ├── notebooks/
-│   └── finetune_qwen25_colab.ipynb  # One-click fine-tune on free Colab T4
+│   └── finetune_qwen25_colab.ipynb  # Colab T4 免费一键微调
 ├── scripts/
-│   ├── prepare_dataset.py # Validate + stratified train/val split (no torch needed)
-│   ├── train_lora.py      # Standard LoRA/QLoRA SFT (transformers + peft + trl)
-│   ├── evaluate.py        # Evaluate format adherence + calculation accuracy
-│   └── serve.py           # Local Gradio demo
+│   ├── prepare_dataset.py # 数据校验 + 分层划分（无需 torch）
+│   ├── train_lora.py      # 标准 LoRA/QLoRA 监督微调（transformers + peft + trl）
+│   ├── evaluate.py        # 评估格式遵循率 + 计算准确率
+│   └── serve.py           # 本地 Gradio 演示
 ├── examples/
-│   └── in-out-pairs.md    # Input → output examples for humans
+│   └── in-out-pairs.md    # 人工可读的输入 → 输出示例
 └── .gitignore
 ```
 
-## Dataset format
+## 数据集格式
 
-`data/train.jsonl` uses the Alpaca instruction format with a `type` tag:
+`data/train.jsonl` 使用 Alpaca 指令格式并带 `type` 标签：
 
 ```json
 {"instruction": "Calculate the break-even point in units and sales value for Bersatu Limited. Selling price RM1.50/unit, variable cost RM0.75/unit, fixed costs RM15,000.",
@@ -61,24 +62,23 @@ business-admin-answer-helper/
  "type": "calculation"}
 ```
 
-## Quick start
+## 快速开始
 
-> 📖 **Full runbook**: see [`docs/TRAINING_GUIDE.md`](docs/TRAINING_GUIDE.md) for the
-> complete train → evaluate → publish workflow, parameter suggestions and FAQ.
+> 📖 **完整手册**：见 [`docs/TRAINING_GUIDE.md`](docs/TRAINING_GUIDE.md)（训练 → 评估 → 发布的完整流程、参数建议和常见问题）。
 
-### Recommended: fine-tune on free Colab (T4 GPU)
+### 推荐：在免费 Colab（T4 GPU）上微调
 
-1. Open [`notebooks/finetune_qwen25_colab.ipynb`](notebooks/finetune_qwen25_colab.ipynb) in Google Colab
-2. Runtime → Change runtime type → **T4 GPU**
-3. Run the cells top to bottom (~25–40 min): installs deps, downloads `train.jsonl` from this repo, loads Qwen2.5-7B in 4-bit (QLoRA), trains 3 epochs, merges the adapter, and lets you test the model inline
-4. Optionally push the merged weights to Hugging Face (weights are too large for GitHub)
+1. 在 Google Colab 打开 [`notebooks/finetune_qwen25_colab.ipynb`](notebooks/finetune_qwen25_colab.ipynb)
+2. 运行环境 → 更改运行时类型 → **T4 GPU**
+3. 从上到下依次运行单元格（约 25–40 分钟）：安装依赖、从本仓库下载 `train.jsonl`、以 4-bit（QLoRA）加载 Qwen2.5-7B、训练 3 个 epoch、合并适配器、在线测试模型
+4. 可选：把合并后的权重推送到 Hugging Face（权重太大，不适合放 GitHub）
 
-### Alternative: train locally / on any GPU
+### 备选：本地 / 任意 GPU 训练
 
 ```bash
 pip install -U torch transformers peft trl datasets accelerate bitsandbytes
 
-# full QLoRA run (verified on RTX 4060 8GB, ~12 min for 3 epochs, 3B model)
+# 完整 QLoRA 训练（已在 RTX 4060 8GB 上验证，3B 模型约 12 分钟 / 3 epoch）
 python scripts/prepare_dataset.py
 python scripts/train_lora.py \
     --model_name Qwen/Qwen2.5-3B-Instruct \
@@ -86,53 +86,49 @@ python scripts/train_lora.py \
     --epochs 3 --lr 2e-4 --batch_size 2 --grad_accum 8 \
     --max_length 2048 --use_4bit --grad_ckpt
 
-# 7B on a 16GB GPU: same command with Qwen/Qwen2.5-7B-Instruct
-# 1-step smoke test (no GPU needed) to verify the pipeline
+# 7B 版（≥16GB 显存）：把 --model_name 换成 Qwen/Qwen2.5-7B-Instruct，建议 --max_length 1024
+
+# 无 GPU 冒烟验证（1 步，验证整个链路）
 python scripts/train_lora.py --smoke --model_name Qwen/Qwen2.5-0.5B-Instruct
 ```
 
-> **Windows notes** (already handled inside `train_lora.py`):
-> - weight loading is forced to a single thread (`GLOBAL_WORKERS=1`) to avoid
->   segfaults from parallel safetensors mmap→CUDA copies;
-> - `max_steps` defaults to `-1` (epoch-driven) for transformers 5.x compat;
-> - a machine with ~16GB RAM and a small pagefile **cannot** load the merged
->   16-bit model for inference — use 4-bit loading or a bigger pagefile.
+> **Windows 注意事项**（已在 `train_lora.py` 内处理）：
+> - 权重加载强制单线程（`GLOBAL_WORKERS=1`），避免并行 safetensors mmap→CUDA 拷贝导致的段错误；
+> - `max_steps` 默认为 `-1`（由 epoch 控制），兼容 transformers 5.x；
+> - 16GB 内存 + 小页面文件的机器**无法**加载合并后的 16-bit 模型做推理——请用 4-bit 加载或增大页面文件。
 
-### Evaluate
+### 评估
 
 ```bash
 python scripts/evaluate.py --model path/to/adapter --test data/train.jsonl
 ```
 
-### Run the demo
+### 运行演示
 
 ```bash
 python scripts/serve.py --model path/to/adapter
 ```
 
-## Model weights
+## 模型权重
 
-Fine-tuned weights are published on Hugging Face: **[zhaoweichang/business-admin-answer-helper](https://huggingface.co/zhaoweichang/business-admin-answer-helper)**
+微调权重已发布在 Hugging Face：**[zhaoweichang/business-admin-answer-helper](https://huggingface.co/zhaoweichang/business-admin-answer-helper)**
 
-> The published model is a **LoRA adapter** built on
-> Qwen2.5-3B-Instruct, trained on this repository's 444-pair instruction dataset.
-> Usage snippet and full metrics are on the model page.
+> 发布的是基于 Qwen2.5-3B-Instruct 训练的 **LoRA 适配器**，训练数据来自本仓库的 444 对指令数据集。使用方法与完整指标见模型主页。
 
-## Roadmap
+## 路线图
 
-- [x] Repository skeleton + answering-format spec
-- [x] Instruction dataset — **444 high-quality pairs** (326 calculation, 53 concept, 37 case, 28 essay). Coverage: CVP, cost & financial ratios, statistics, cost classification, flexible budgets, cost-of-goods-manufactured schedules, weighted-average process costing, job costing, multi-product CVP, contribution-format statements, efficiency/return ratios, **Malaysia-context cases** (NSRF, Bursa Malaysia, Maybank, MASB, BNM, local brands). All calculation answers are machine-computed and independently re-verified
-- [x] Training pipeline — `scripts/prepare_dataset.py` + `scripts/train_lora.py` + `notebooks/finetune_qwen25_colab.ipynb` (verified data pipeline & 1-step smoke run)
-- [x] **Fine-tune on a real GPU (verified)** — Qwen2.5-**3B**-Instruct, QLoRA 4-bit, 3 epochs, on an RTX 4060 Laptop 8GB: train loss 2.46→0.61, **eval token accuracy 85.7%** (eval loss 0.56). 7B is also supported; on Windows set `GLOBAL_WORKERS=1` (see `docs/TRAINING_GUIDE.md` § Windows notes)
-- [ ] Evaluation report (format adherence + calculation accuracy)
-- [ ] Publish weights on Hugging Face
-- [ ] Multi-course question bank
+- [x] 仓库骨架 + 答题格式规范
+- [x] 指令数据集 — **444 对高质量问答**（计算 326 / 概念 53 / 案例 37 / 论述 28）。覆盖：本量利分析、成本与财务比率、统计学、成本分类、弹性预算、制造成本表、加权平均分步成本法、分批成本法、多产品本量利、贡献式利润表、效率/回报率，以及**马来西亚本地案例**（NSRF、Bursa Malaysia、Maybank、MASB、BNM、本地品牌）。所有计算答案均为机器计算并独立复核
+- [x] 训练管线 — `scripts/prepare_dataset.py` + `scripts/train_lora.py` + `notebooks/finetune_qwen25_colab.ipynb`（数据管线与冒烟测试已验证）
+- [x] **真实 GPU 微调（已验证）** — Qwen2.5-**3B**-Instruct，QLoRA 4-bit，3 epoch，RTX 4060 Laptop 8GB：训练 loss 2.46→0.61，**验证集 token 准确率 85.7%**（验证 loss 0.56）。也支持 7B；Windows 上需设置 `GLOBAL_WORKERS=1`（见 `docs/TRAINING_GUIDE.md` § Windows 注意事项）
+- [ ] 评估报告（格式遵循率 + 计算准确率）
+- [ ] 多课程题库扩充
 
-## License
+## 许可证
 
-Apache-2.0. See [LICENSE](LICENSE).
+Apache-2.0。见 [LICENSE](LICENSE)。
 
-## Disclaimer & data provenance
+## 免责声明与数据来源
 
-- The dataset is built from **openly described answering conventions** and **original example solutions** written for this project. It does **not** include copyrighted textbook content, university-internal materials, or personal information.
-- The model is a writing **assistant**. Users are responsible for complying with their institution's academic-integrity policies and for verifying numbers, citations, and facts before submission.
+- 数据集基于**公开描述的答题规范**和**为本项目原创的示例解答**构建，**不包含**受版权保护的教材内容、校内材料或个人隐私信息。
+- 该模型是写作**助手**。用户有责任遵守所在院校的学术诚信政策，并在提交前核对所有数字、引用和事实。
