@@ -59,6 +59,8 @@ def main():
     parser.add_argument("--warmup_ratio", type=float, default=0.1)
     parser.add_argument("--use_4bit", action="store_true",
                         help="QLoRA via bitsandbytes (needs CUDA)")
+    parser.add_argument("--grad_ckpt", action="store_true",
+                        help="enable gradient checkpointing (needed for 8GB GPUs)")
     parser.add_argument("--max_steps", type=int, default=None)
     parser.add_argument("--val_size", type=float, default=0.05)
     parser.add_argument("--seed", type=int, default=42)
@@ -70,6 +72,10 @@ def main():
         import torch
         from transformers import (AutoModelForCausalLM, AutoTokenizer,
                                   BitsAndBytesConfig)
+        # Windows + torch 2.11: parallel safetensors mmap->CUDA copies can segfault.
+        # Force single-threaded weight materialization to keep loading stable.
+        import transformers.core_model_loading as _cml
+        _cml.GLOBAL_WORKERS = 1
         from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
         from trl import SFTTrainer, SFTConfig
         from datasets import Dataset
@@ -150,7 +156,7 @@ def main():
             gradient_accumulation_steps=args.grad_accum,
             learning_rate=args.lr,
             num_train_epochs=args.epochs,
-            max_steps=args.max_steps,
+            max_steps=args.max_steps if args.max_steps is not None else -1,
             lr_scheduler_type="cosine",
             warmup_steps=warmup_steps,
             logging_steps=1,
@@ -160,6 +166,7 @@ def main():
             eval_steps=200,
             bf16=torch.cuda.is_available(),
             fp16=False,
+            gradient_checkpointing=args.grad_ckpt,
             seed=args.seed,
             report_to=[],
         ),
