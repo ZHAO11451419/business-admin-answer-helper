@@ -85,11 +85,14 @@ def _safe_eval(expr: str):
 
 
 def _fmt_result(value, source_num: str) -> str:
-    """把精确结果按源数字的风格格式化（保留字母前缀 + 千分位 + 小数位）。"""
+    """把精确结果按源数字的风格格式化（保留字母前缀 + 千分位 + 小数位）。
+
+    比率类修正（如 1.12）至少保留 2 位小数，防止模型写 "1.0" 时修正成 "1.1" 丢精度。
+    """
     m = re.match(r"([A-Za-z]*)(.*)", source_num.strip())
     prefix, src = m.group(1), m.group(2)
     if "." in src:
-        decimals = len(src.split(".")[1])
+        decimals = max(2, len(src.split(".")[1]))
         text = f"{value:.{decimals}f}"
     elif float(value) == int(value):
         text = str(int(value))
