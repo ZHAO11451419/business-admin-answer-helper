@@ -31,3 +31,6 @@ Thumbs.db
 # Large/private data that must NOT be committed
 data/raw/*
 !data/raw/README.md
+
+# studio_app 是独立 git 仓库（ModelScope 创空间部署），主仓库不跟踪其内容
+studio_app/
