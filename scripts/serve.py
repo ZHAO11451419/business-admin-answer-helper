@@ -15,6 +15,15 @@ Gradio 网页界面：在浏览器里与微调后的工商管理答题助手对�
 """
 import argparse
 import os
+import sys
+
+# 中文 Windows 控制台默认 GBK，无法编码 Unicode 减号（−，U+2212）等字符，
+# 打印 calc_assist 修正记录时会抛 UnicodeEncodeError 导致回答流程崩溃。
+# 强制 stdout/stderr 使用 UTF-8，并对无法编码的字符做替换而非报错。
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 os.environ.setdefault("HF_HOME", r"D:\ai\hf_home")   # 模型缓存放到 D 盘
 os.environ.setdefault("HF_HUB_OFFLINE", "1")          # 本地缓存优先，避免联网超时
