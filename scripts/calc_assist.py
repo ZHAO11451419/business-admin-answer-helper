@@ -28,9 +28,41 @@ _OPS = {
 
 _TRANSLATE = str.maketrans({"÷": "/", "×": "*", "−": "-", "—": "-"})
 
-_NUM = r"(?:[A-Za-z]*\d[\d,]*(?:\.\d+)?)"   # 数字，允许 RM/units 等字母前缀
-# 操作数：纯数字，或"括号内至少两操作数一运算符"的复合表达式
-_ATOM = rf"(?:\({_NUM}(?:\s*[\/÷×\*+\-−]\s*{_NUM})+\)|{_NUM})"
+# Unicode 上标（次方）转成 ^n 记号，随后在 _expand_supers 中展开为乘法
+_SUP = str.maketrans({
+    "⁰": "^0", "¹": "^1", "²": "^2", "³": "^3", "⁴": "^4",
+    "⁵": "^5", "⁶": "^6", "⁷": "^7", "⁸": "^8", "⁹": "^9",
+})
+
+
+def _expand_supers(s: str) -> str:
+    """把 Unicode 上标次方展开为 Python 可求值的乘法形式。
+
+    (1 + 0.10)¹ → (1 + 0.10)；5² → ((5)*(5))；(X)³ → ((X)*(X)*(X))。
+    展开后的整个因子必须保持括号，避免 "÷(X)²" 被解析成 "÷(X)*(X)" 改变运算顺序。
+    """
+    s = s.translate(_SUP)
+    s = re.sub(r"(\([^()]*\))\^0|\d+(?:\.\d+)?\^0", "1", s)
+
+    def _pow(inner: str, n: int) -> str:
+        if n == 1:
+            return inner if inner.startswith("(") else f"({inner})"
+        return "(" + "*".join([f"({inner})"] * n) + ")"
+
+    for n in range(9, 0, -1):
+        s = re.sub(rf"(\([^()]*\))\^{n}", lambda m: _pow(m.group(1), n), s)
+        s = re.sub(
+            rf"(?<![\w.])(\d+(?:\.\d+)?)\^{n}",
+            lambda m: _pow(m.group(1), n),
+            s,
+        )
+    return s
+
+
+# 数字，允许 RM/units 等字母前缀与可选负号（−/—/-，覆盖模型常见的全角负号）
+_NUM = r"(?:[-−—]?[A-Za-z]*\d[\d,]*(?:\.\d+)?)"
+# 操作数：纯数字，或"括号内至少两操作数一运算符"的复合表达式（括号后可带 Unicode 上标次方）
+_ATOM = rf"(?:\({_NUM}(?:\s*[\/÷×\*+\-−]\s*{_NUM})+\)[⁰¹²³⁴⁵⁶⁷⁸⁹]*|{_NUM})"
 # 表达式 = 结果：表达式为"至少两个操作数 + 至少一个运算符"，结果紧随等号。
 # 分步式中间结果（"(A−B) ÷ C = RM20,000 ÷ RM25,000 = 0.80" 中的 RM20,000）
 # 在 _iter_expr_eq 里用手动后置检查拒绝，避免正则断言被回溯绕过。
@@ -107,9 +139,10 @@ def _fmt_result(value, source_num: str) -> str:
 
 
 def _normalise(s: str) -> str:
-    """把模型文本表达式转成 Python 可求值形式（去掉字母/货币前缀）。"""
+    """把模型文本表达式转成 Python 可求值形式（去掉字母/货币前缀，展开上标）。"""
     s = re.sub(r"[A-Za-z]", "", s)
-    return s.translate(_TRANSLATE).replace(",", "").strip()
+    s = s.translate(_TRANSLATE).replace(",", "").strip()
+    return _expand_supers(s)
 
 
 def _propagate(text: str, old_val: str, new_val: str, start: int, max_hits: int = 3):
@@ -176,6 +209,10 @@ def fix_arithmetic(text: str):
             # 误判代价高于漏判。
             continue
         correct = _fmt_result(value, result_raw)
+        if value >= 0 and re.match(r"^[-−—]", result_raw.strip()):
+            # 正确值为正但源结果带负号前缀（如 "= —RM95,867.76"）：剥掉负号再格式化，
+            # 避免修正后残留 "—RM4,132.23" 这类错误符号。
+            correct = _fmt_result(value, result_raw.strip().lstrip("[-−—]"))
         correct_disp = f"{_fmt_result(value * 100, result_raw)}%" if is_pct else correct
         if correct_disp != (result_raw + ("%" if is_pct else "")):
             old_frag = m.group(0) + ("%" if is_pct else "")
@@ -183,8 +220,8 @@ def fix_arithmetic(text: str):
             corrections.append((old_frag, new_frag))
             fixed = fixed.replace(old_frag, new_frag, 1)
             # 同值传播：修正点之后出现的孤立旧值（解读句重复）一并纠正
-            result_plain = result_raw.lstrip("A-Za-z")
-            correct_plain = correct_disp.lstrip("A-Za-z").rstrip("%")
+            result_plain = result_raw.lstrip("[-−—A-Za-z]")
+            correct_plain = correct_disp.lstrip("[-−—A-Za-z]").rstrip("%")
             if result_plain != correct_plain:
                 start = fixed.find(new_frag, last_end) + len(new_frag)
                 fixed, _ = _propagate(fixed, result_plain, correct_plain, start)
@@ -222,6 +259,11 @@ def _self_test():
          "Margin = RM10,000 ÷ RM20,000 = 50%"),
         # 小数四舍五入：0.97 ≈ 0.965 不改
         ("r = 677.00 ÷ (17.89 × 39.22) = 0.97", None),
+        # 盲区修复：em dash 负号 + Unicode 上标次方（NPV 折现）
+        ("NPV = —RM100,000 + RM60,000 ÷ (1 + 0.10)¹ + RM60,000 ÷ (1 + 0.10)² = —RM95,867.76",
+         "NPV = —RM100,000 + RM60,000 ÷ (1 + 0.10)¹ + RM60,000 ÷ (1 + 0.10)² = RM4,132.23"),
+        # 上标次方 + 结果本身正确：不改
+        ("NPV = —RM100,000 + RM60,000 ÷ (1 + 0.10)¹ + RM60,000 ÷ (1 + 0.10)² = RM4,132.23", None),
     ]
     ok = True
     for src, expect in samples:
