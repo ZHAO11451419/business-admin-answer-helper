@@ -118,6 +118,7 @@ python scripts/serve.py --model path/to/adapter
 |---|---|---|
 | Hugging Face | [zhaoweichang/business-admin-answer-helper](https://huggingface.co/zhaoweichang/business-admin-answer-helper) | 国际用户 |
 | **ModelScope（魔搭）** | [zhao1145141919/business-admin-answer-helper](https://modelscope.cn/models/zhao1145141919/business-admin-answer-helper) | **中国大陆用户直连，无需 VPN** |
+| **在线体验（创空间）** | [business-admin-answer-helper](https://www.modelscope.cn/studios/zhao1145141919/business-admin-answer-helper) | 打开即聊，无需部署；已内置计算器外挂（自动修正算术） |
 
 > 发布的是基于 Qwen2.5-3B-Instruct 训练的 **LoRA 适配器**（r=24 / α=48），训练数据来自本仓库 **1552 对**指令数据集（v2，验证集 token 准确率 **94.4%**）。使用方法与完整指标见模型主页。
 
