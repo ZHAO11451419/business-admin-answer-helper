@@ -65,7 +65,7 @@ business-admin-answer-helper/
 ## 快速开始
 
 > 📖 **完整手册**：见 [`docs/TRAINING_GUIDE.md`](docs/TRAINING_GUIDE.md)（训练 → 评估 → 发布的完整流程、参数建议和常见问题）。
-> 🚀 **运行模型**：见 [`docs/USAGE.md`](docs/USAGE.md)（三种运行方式：命令行 / 网页界面 / Colab 在线）。
+> 🚀 **运行模型**：见 [`docs/USAGE.md`](docs/USAGE.md)（四种运行方式：ModelScope 国内直连 / 命令行 / 网页界面 / Colab 在线）。
 
 ### 推荐：在免费 Colab（T4 GPU）上微调
 
@@ -112,16 +112,37 @@ python scripts/serve.py --model path/to/adapter
 
 ## 模型权重
 
-微调权重已发布在 Hugging Face：**[zhaoweichang/business-admin-answer-helper](https://huggingface.co/zhaoweichang/business-admin-answer-helper)**
+微调权重已发布在**双平台**：
 
-> 发布的是基于 Qwen2.5-3B-Instruct 训练的 **LoRA 适配器**，训练数据来自本仓库的 444 对指令数据集。使用方法与完整指标见模型主页。
+| 平台 | 链接 | 适用 |
+|---|---|---|
+| Hugging Face | [zhaoweichang/business-admin-answer-helper](https://huggingface.co/zhaoweichang/business-admin-answer-helper) | 国际用户 |
+| **ModelScope（魔搭）** | [zhao1145141919/business-admin-answer-helper](https://modelscope.cn/models/zhao1145141919/business-admin-answer-helper) | **中国大陆用户直连，无需 VPN** |
+
+> 发布的是基于 Qwen2.5-3B-Instruct 训练的 **LoRA 适配器**（r=24 / α=48），训练数据来自本仓库 **1552 对**指令数据集（v2，验证集 token 准确率 **94.4%**）。使用方法与完整指标见模型主页。
+
+### 中国大陆用户：ModelScope 直连（免 VPN）
+
+基座模型在 ModelScope 官方仓库国内直连下载，再挂载本仓库 adapter 即可（详见 `docs/USAGE.md` 方式〇）：
+
+```python
+from modelscope import AutoModelForCausalLM, AutoTokenizer, snapshot_download
+from peft import PeftModel
+
+base_dir = snapshot_download('Qwen/Qwen2.5-3B-Instruct')
+base = AutoModelForCausalLM.from_pretrained(base_dir, device_map='auto', trust_remote_code=True)
+tok = AutoTokenizer.from_pretrained(base_dir, trust_remote_code=True)
+model = PeftModel.from_pretrained(base, 'zhao1145141919/business-admin-answer-helper')
+# 提问格式同下方"运行演示"
+```
 
 ## 路线图
 
 - [x] 仓库骨架 + 答题格式规范
-- [x] 指令数据集 — **444 对高质量问答**（计算 326 / 概念 53 / 案例 37 / 论述 28）。覆盖：本量利分析、成本与财务比率、统计学、成本分类、弹性预算、制造成本表、加权平均分步成本法、分批成本法、多产品本量利、贡献式利润表、效率/回报率，以及**马来西亚本地案例**（NSRF、Bursa Malaysia、Maybank、MASB、BNM、本地品牌）。所有计算答案均为机器计算并独立复核
+- [x] 指令数据集 — **1552 对高质量问答**（v2：计算 1394 / 案例 77 / 概念 53 / 论述 28，含 500 条算术专项强化，全部通过计算器 QC 门）。覆盖：本量利分析、成本与财务比率、统计学、成本分类、弹性预算、制造成本表、加权平均分步成本法、分批成本法、多产品本量利、贡献式利润表、效率/回报率，以及**马来西亚本地案例**（NSRF、Bursa Malaysia、Maybank、MASB、BNM、本地品牌）。所有计算答案均为机器计算并独立复核
 - [x] 训练管线 — `scripts/prepare_dataset.py` + `scripts/train_lora.py` + `notebooks/finetune_qwen25_colab.ipynb`（数据管线与冒烟测试已验证）
-- [x] **真实 GPU 微调（已验证）** — Qwen2.5-**3B**-Instruct，QLoRA 4-bit，3 epoch，RTX 4060 Laptop 8GB：训练 loss 2.46→0.61，**验证集 token 准确率 85.7%**（验证 loss 0.56）。也支持 7B；Windows 上需设置 `GLOBAL_WORKERS=1`（见 `docs/TRAINING_GUIDE.md` § Windows 注意事项）
+- [x] **真实 GPU 微调（v1 + v2 已验证）** — Qwen2.5-**3B**-Instruct，QLoRA 4-bit，RTX 4060 Laptop 8GB：v1（444 对 / r16）loss 2.46→0.61、验证集 token 准确率 85.7%；**v2（1552 对 / r24）loss→0.28、验证集 token 准确率 94.4%**。也支持 7B；Windows 上需设置 `GLOBAL_WORKERS=1`（见 `docs/TRAINING_GUIDE.md` § Windows 注意事项）
+- [x] **计算器辅助（calculator-assist）** — 推理输出自动提取表达式重算并修正算术错误（比率精度、百分比、取整、分步式等 12 项自测全过）
 - [ ] 评估报告（格式遵循率 + 计算准确率）
 - [ ] 多课程题库扩充
 

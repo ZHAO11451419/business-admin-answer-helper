@@ -1,10 +1,46 @@
 # 模型使用指南（Usage）
 
-本文档介绍如何运行微调后的工商管理答题助手模型。模型权重已发布在
-Hugging Face：**[zhaoweichang/business-admin-answer-helper](https://huggingface.co/zhaoweichang/business-admin-answer-helper)**
-（LoRA 适配器，基座为 Qwen2.5-3B-Instruct）。
+本文档介绍如何运行微调后的工商管理答题助手模型。模型权重已发布在**双平台**：
 
-三种方式按推荐程度排列：**方式三（Colab 在线）最省事，方式一（命令行）最灵活，方式二（网页界面）最日常**。
+| 平台 | 链接 | 适用 |
+|---|---|---|
+| Hugging Face | [zhaoweichang/business-admin-answer-helper](https://huggingface.co/zhaoweichang/business-admin-answer-helper) | 国际用户 |
+| **ModelScope（魔搭）** | [zhao1145141919/business-admin-answer-helper](https://modelscope.cn/models/zhao1145141919/business-admin-answer-helper) | **中国大陆用户直连，无需 VPN** |
+
+（LoRA 适配器，基座为 Qwen2.5-3B-Instruct，v2：1552 对训练数据 / 验证集 token 准确率 94.4% / r=24）
+
+运行方式按推荐程度排列：**中国大陆用户用方式〇（ModelScope 直连）最省事，方式一（命令行）最灵活，方式二（网页界面）最日常，方式三（Colab 在线）零本地资源**。
+
+---
+
+## 方式〇：中国大陆直连（ModelScope，免 VPN）
+
+基座模型从 ModelScope 官方仓库国内直连下载，再挂载本仓库 adapter：
+
+```python
+import torch
+from modelscope import AutoModelForCausalLM, AutoTokenizer, snapshot_download
+from peft import PeftModel
+
+# 1) 下载基座（国内直连，ModelScope 官方镜像）
+base_dir = snapshot_download('Qwen/Qwen2.5-3B-Instruct')
+tok = AutoTokenizer.from_pretrained(base_dir, trust_remote_code=True)
+base = AutoModelForCausalLM.from_pretrained(
+    base_dir, torch_dtype=torch.bfloat16, device_map='auto', trust_remote_code=True)
+
+# 2) 挂载本仓库的 LoRA adapter
+model = PeftModel.from_pretrained(base, 'zhao1145141919/business-admin-answer-helper')
+
+# 3) 提问（格式与训练数据一致时效果最好）
+q = "Calculate the break-even point in units for Bersatu Limited. Price RM1.50, variable cost RM0.75, fixed costs RM15,000."
+s = tok.apply_chat_template([{"role": "user", "content": q}], tokenize=False, add_generation_prompt=True)
+out = model.generate(**tok(s, return_tensors="pt").to(model.device),
+                     max_new_tokens=400, do_sample=False)
+answer = tok.decode(out[0][len(tok(s)["input_ids"][0]):], skip_special_tokens=True)
+print(answer)
+```
+
+无需 VPN、无需科学上网；显卡 8GB 显存即可跑（纯 CPU 推理也可以，但较慢）。
 
 ---
 
@@ -88,7 +124,7 @@ python scripts/serve.py --model outputs/business-admin-answer-helper/merged
 | `OSError: 页面文件太小` (os error 1455) | Windows 虚拟内存（页面文件）过小。设置 → 系统 → 关于 → 高级系统设置 → 性能设置 → 高级 → 虚拟内存 → 改为 **16-24GB** 或"系统管理的大小"，重启生效 |
 | Windows 加载 safetensors 段错误（0xC0000005） | 已在 `scripts/train_lora.py` 内置单线程加载修复（`GLOBAL_WORKERS=1`）；推理脚本可自行加同样的补丁 |
 | 没有 GPU，只有 CPU | 代码可运行（`device_map="auto"` 会落到 CPU），但生成较慢（一条答案数十秒），建议用 Colab |
-| 网络无法访问 huggingface.co | 需要代理/VPN；或离线加载：先把权重下载到本地，再把模型名换成本地目录路径 |
+| 网络无法访问 huggingface.co | 中国大陆用户请直接用 **方式〇（ModelScope 直连）**，无需 VPN；或离线加载：先把权重下载到本地，再把模型名换成本地目录路径 |
 
 ---
 
