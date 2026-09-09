@@ -59,10 +59,12 @@ def _expand_supers(s: str) -> str:
     return s
 
 
-# 数字，允许 RM/units 等字母前缀与可选负号（−/—/-，覆盖模型常见的全角负号）
+_OP = r"[\/÷×\*+\-−]"
 _NUM = r"(?:[-−—]?[A-Za-z]*\d[\d,]*(?:\.\d+)?)"
-# 操作数：纯数字，或"括号内至少两操作数一运算符"的复合表达式（括号后可带 Unicode 上标次方）
-_ATOM = rf"(?:\({_NUM}(?:\s*[\/÷×\*+\-−]\s*{_NUM})+\)[⁰¹²³⁴⁵⁶⁷⁸⁹]*|{_NUM})"
+# 一层嵌套操作数：数字，或"括号内至少两操作数一运算符"（内层可为数字或一层括号）
+_ATOM_INNER = rf"(?:{_NUM}|\({_NUM}(?:\s*{_OP}\s*{_NUM})+\))"
+# 操作数：纯数字，或"括号内至少两操作数一运算符"（支持一层嵌套括号 + Unicode 上标次方）
+_ATOM = rf"(?:\({_ATOM_INNER}(?:\s*{_OP}\s*{_ATOM_INNER})+\)[⁰¹²³⁴⁵⁶⁷⁸⁹]*|{_NUM})"
 # 表达式 = 结果：表达式为"至少两个操作数 + 至少一个运算符"，结果紧随等号。
 # 分步式中间结果（"(A−B) ÷ C = RM20,000 ÷ RM25,000 = 0.80" 中的 RM20,000）
 # 在 _iter_expr_eq 里用手动后置检查拒绝，避免正则断言被回溯绕过。
@@ -141,6 +143,7 @@ def _fmt_result(value, source_num: str) -> str:
 def _normalise(s: str) -> str:
     """把模型文本表达式转成 Python 可求值形式（去掉字母/货币前缀，展开上标）。"""
     s = re.sub(r"[A-Za-z]", "", s)
+    s = s.replace("[", "(").replace("]", ")")  # 中括号（模型常用 [] 表示分组）→ 圆括号
     s = s.translate(_TRANSLATE).replace(",", "").strip()
     return _expand_supers(s)
 
@@ -176,7 +179,7 @@ def fix_arithmetic(text: str):
         (fixed_text, corrections)  corrections 为 [(原始片段, 修正后片段), ...]
     """
     corrections = []
-    fixed = text
+    fixed = text.replace("[", "(").replace("]", ")")  # 中括号分组 → 圆括号（正则与求值均需）
     last_end = 0
     for m in _iter_expr_eq(fixed):
         expr_raw, result_raw = m.group(1), m.group(2)
@@ -204,9 +207,11 @@ def fix_arithmetic(text: str):
             if "." in stated and not is_pct and abs(value_disp - stated_f) < 0.01:
                 # 小数四舍五入容忍（0.97 ≈ 0.965）；含小数比率仍严格修正
                 continue
-        if value < 0:
+        if value < 0 and "elastic" not in fixed.lower():
             # 负结果跳过：业务语境中差异/变化常取绝对值（如有利差异 RM40,000），
-            # 误判代价高于漏判。
+            # 误判代价高于漏判；唯一例外是需求价格弹性——弹性天然为负，
+            # 此时必须修正（如 −2.00 → −1.00）。关键词取全文而非表达式本身
+            #（"Elasticity = ..." 中 elastic 在等号左边）。
             continue
         correct = _fmt_result(value, result_raw)
         if value >= 0 and re.match(r"^[-−—]", result_raw.strip()):
@@ -264,6 +269,11 @@ def _self_test():
          "NPV = —RM100,000 + RM60,000 ÷ (1 + 0.10)¹ + RM60,000 ÷ (1 + 0.10)² = RM4,132.23"),
         # 上标次方 + 结果本身正确：不改
         ("NPV = —RM100,000 + RM60,000 ÷ (1 + 0.10)¹ + RM60,000 ÷ (1 + 0.10)² = RM4,132.23", None),
+        # 盲区修复：需求价格弹性（负值 + 中括号分组）必须修正
+        ("Elasticity = [(80 − 100) ÷ 100] ÷ [(6.00 − 5.00) ÷ 5.00] = −2.00",
+         "Elasticity = ((80 − 100) ÷ 100) ÷ ((6.00 − 5.00) ÷ 5.00) = -1.00"),
+        # 弹性结果正确：不改
+        ("Elasticity = [(80 − 100) ÷ 100] ÷ [(6.00 − 5.00) ÷ 5.00] = -1.00", None),
     ]
     ok = True
     for src, expect in samples:
