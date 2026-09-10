@@ -24,6 +24,7 @@ _OPS = {
     "Mult": operator.mul,
     "Add": operator.add,
     "Sub": operator.sub,
+    "Pow": operator.pow,  # √ 展开为 **0.5 时使用
 }
 
 _TRANSLATE = str.maketrans({"÷": "/", "×": "*", "−": "-", "—": "-"})
@@ -63,8 +64,8 @@ _OP = r"[\/÷×\*+\-−]"
 _NUM = r"(?:[-−—]?[A-Za-z]*\d[\d,]*(?:\.\d+)?)"
 # 一层嵌套操作数：数字，或"括号内至少两操作数一运算符"（内层可为数字或一层括号）
 _ATOM_INNER = rf"(?:{_NUM}|\({_NUM}(?:\s*{_OP}\s*{_NUM})+\))"
-# 操作数：纯数字，或"括号内至少两操作数一运算符"（支持一层嵌套括号 + Unicode 上标次方）
-_ATOM = rf"(?:\({_ATOM_INNER}(?:\s*{_OP}\s*{_ATOM_INNER})+\)[⁰¹²³⁴⁵⁶⁷⁸⁹]*|{_NUM})"
+# 操作数：√ 平方根、纯数字，或"括号内至少两操作数一运算符"（支持一层嵌套括号 + Unicode 上标次方）
+_ATOM = rf"(?:√\([^()]*\)[⁰¹²³⁴⁵⁶⁷⁸⁹]*|\({_ATOM_INNER}(?:\s*{_OP}\s*{_ATOM_INNER})+\)[⁰¹²³⁴⁵⁶⁷⁸⁹]*|{_NUM})"
 # 表达式 = 结果：表达式为"至少两个操作数 + 至少一个运算符"，结果紧随等号。
 # 分步式中间结果（"(A−B) ÷ C = RM20,000 ÷ RM25,000 = 0.80" 中的 RM20,000）
 # 在 _iter_expr_eq 里用手动后置检查拒绝，避免正则断言被回溯绕过。
@@ -74,12 +75,28 @@ _EXPR_EQ = re.compile(
 
 # 结果数字后紧跟运算符 + 数字 → 这是分步式中间结果，不是最终结果
 _TAIL_OP = re.compile(r"^\s*[÷×]\s*[A-Za-z]*\d")
+# 结果数字后紧跟等号 + 数字 → 链式中间值（如 "√500,000 = 707" 中的 √500,000），跳过
+_TAIL_EQ = re.compile(r"^\s*=\s*[-−—]?[A-Za-z]*\d")
+# 单独的 √(expr) = 结果（√ 是单操作数，_EXPR_EQ 要求至少两操作数，故单独提取）
+_SQRT_EQ = re.compile(r"(√\([^()]*\))\s*=\s*([-−—]?[A-Za-z]*\d[\d,]*(?:\.\d+)?)")
 
 
 def _iter_expr_eq(text):
-    """迭代"表达式 = 结果"，跳过分步式中间结果（结果后紧跟 ÷/× 运算符）。"""
+    """迭代"表达式 = 结果"，跳过分步式中间结果（结果后紧跟 ÷/× 运算符或链式等号）。"""
     for m in _EXPR_EQ.finditer(text):
         if _TAIL_OP.match(text[m.end():]):
+            continue
+        if _TAIL_EQ.match(text[m.end():]):
+            continue
+        yield m
+
+
+def _iter_sqrt_eq(text):
+    """迭代"√(expr) = 结果"（√ 单操作数形式），同样跳过分步式中间结果。"""
+    for m in _SQRT_EQ.finditer(text):
+        if _TAIL_OP.match(text[m.end():]):
+            continue
+        if _TAIL_EQ.match(text[m.end():]):
             continue
         yield m
 
@@ -141,10 +158,13 @@ def _fmt_result(value, source_num: str) -> str:
 
 
 def _normalise(s: str) -> str:
-    """把模型文本表达式转成 Python 可求值形式（去掉字母/货币前缀，展开上标）。"""
-    s = re.sub(r"[A-Za-z]", "", s)
+    """把模型文本表达式转成 Python 可求值形式（去掉字母/货币前缀，展开上标与平方根）。"""
+    s = re.sub(r"[A-Za-z]", "", s)  # 先去字母（sqrt 等关键字被删，√ 符号保留）
     s = s.replace("[", "(").replace("]", ")")  # 中括号（模型常用 [] 表示分组）→ 圆括号
     s = s.translate(_TRANSLATE).replace(",", "").strip()
+    # √(expr) / √数字 → 0.5 次幂（求值器已支持 Pow）
+    s = re.sub(r"√\s*\(([^()]*)\)", r"(\1)**0.5", s)
+    s = re.sub(r"√\s*(\d+(?:\.\d+)?)", r"\1**0.5", s)
     return _expand_supers(s)
 
 
@@ -181,7 +201,12 @@ def fix_arithmetic(text: str):
     corrections = []
     fixed = text.replace("[", "(").replace("]", ")")  # 中括号分组 → 圆括号（正则与求值均需）
     last_end = 0
-    for m in _iter_expr_eq(fixed):
+    # 合并两类表达式迭代器（普通表达式 + √ 单操作数），按出现位置排序后统一处理
+    matches = sorted(
+        list(_iter_expr_eq(fixed)) + list(_iter_sqrt_eq(fixed)),
+        key=lambda m: m.start(),
+    )
+    for m in matches:
         expr_raw, result_raw = m.group(1), m.group(2)
         expr = _normalise(expr_raw)
         try:
@@ -274,6 +299,13 @@ def _self_test():
          "Elasticity = ((80 − 100) ÷ 100) ÷ ((6.00 − 5.00) ÷ 5.00) = -1.00"),
         # 弹性结果正确：不改
         ("Elasticity = [(80 − 100) ÷ 100] ÷ [(6.00 − 5.00) ÷ 5.00] = -1.00", None),
+        # 盲区修复：平方根 √（EOQ）——算错则修正
+        ("EOQ = √(2 × 5,000 × 100 ÷ 2) = 700 units",
+         "EOQ = √(2 × 5,000 × 100 ÷ 2) = 707.1068 units"),
+        # 平方根结果正确（整数取整 707 ≈ 707.11）：不改
+        ("EOQ = √(2 × 5,000 × 100 ÷ 2) = 707 units", None),
+        # 链式中间值（√500,000 后还有 = 707）：跳过，不误改
+        ("EOQ = √(2 × 5,000 × 100 ÷ 2) = √500,000 = 707 units", None),
     ]
     ok = True
     for src, expect in samples:
