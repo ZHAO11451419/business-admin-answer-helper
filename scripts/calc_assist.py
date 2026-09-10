@@ -61,7 +61,8 @@ def _expand_supers(s: str) -> str:
 
 
 _OP = r"[\/÷×\*+\-−]"
-_NUM = r"(?:[-−—]?[A-Za-z]*\d[\d,]*(?:\.\d+)?)"
+# 数字：可选负号 + 字母前缀 + 数值 + 可选 % 单位后缀（如 "10%"，% 紧贴数字不能单独成 token）
+_NUM = r"(?:[-−—]?[A-Za-z]*\d[\d,]*(?:\.\d+)?%?)"
 # 一层嵌套操作数：数字，或"括号内至少两操作数一运算符"（内层可为数字或一层括号）
 _ATOM_INNER = rf"(?:{_NUM}|\({_NUM}(?:\s*{_OP}\s*{_NUM})+\))"
 # 操作数：√ 平方根、纯数字，或"括号内至少两操作数一运算符"（支持一层嵌套括号 + Unicode 上标次方）
@@ -162,6 +163,7 @@ def _normalise(s: str) -> str:
     s = re.sub(r"[A-Za-z]", "", s)  # 先去字母（sqrt 等关键字被删，√ 符号保留）
     s = s.replace("[", "(").replace("]", ")")  # 中括号（模型常用 [] 表示分组）→ 圆括号
     s = s.translate(_TRANSLATE).replace(",", "").strip()
+    s = s.replace("%", "")  # % 在表达式中只是单位标记（3.5% 即 3.5），否则会被 ast 当取模运算
     # √(expr) / √数字 → 0.5 次幂（求值器已支持 Pow）
     s = re.sub(r"√\s*\(([^()]*)\)", r"(\1)**0.5", s)
     s = re.sub(r"√\s*(\d+(?:\.\d+)?)", r"\1**0.5", s)
@@ -218,7 +220,11 @@ def fix_arithmetic(text: str):
         if re.search(r"\bQ[1-3]\b", expr_raw):
             # 统计符号（Q1/Q3 四分位数等）会被字母前缀误解析，跳过
             continue
-        is_pct = bool(re.match(r"\s*%", fixed[m.end():]))
+        # 百分比判定：结果本身带 % 且表达式内部不含 % 时，把比值 ×100 后比较
+        #（如 (RM90,000 + RM50,000) ÷ RM120,000 = 117%）。
+        # 若表达式本身已含 %（如 CAPM "3.5% + 1.2 × (10% − 3.5%)"），模型已按 % 单位
+        # 表达，直接比较原值，不得再 ×100，否则会把正确结果误改成 ×100 的错值。
+        is_pct = result_raw.rstrip().endswith("%") and "%" not in expr_raw
         value_disp = value * 100 if is_pct else value
         stated = re.sub(r"[^\d.]", "", result_raw)
         try:
@@ -244,14 +250,18 @@ def fix_arithmetic(text: str):
             # 避免修正后残留 "—RM4,132.23" 这类错误符号。
             correct = _fmt_result(value, result_raw.strip().lstrip("[-−—]"))
         correct_disp = f"{_fmt_result(value * 100, result_raw)}%" if is_pct else correct
-        if correct_disp != (result_raw + ("%" if is_pct else "")):
-            old_frag = m.group(0) + ("%" if is_pct else "")
+        # 源结果带 %（如 CAPM "= 12.5%"）但表达式也含 %（is_pct=False）时，补回 % 后缀
+        if result_raw.rstrip().endswith("%") and not correct_disp.endswith("%"):
+            correct_disp += "%"
+        if correct_disp != result_raw:
+            # m.group(0) 已含 result_raw（含 % 后缀），无需再追加 %
+            old_frag = m.group(0)
             new_frag = f"{expr_raw.strip()} = {correct_disp}"
             corrections.append((old_frag, new_frag))
             fixed = fixed.replace(old_frag, new_frag, 1)
-            # 同值传播：修正点之后出现的孤立旧值（解读句重复）一并纠正
+            # 同值传播：修正点之后出现的孤立旧值（解读句重复）一并纠正（保留 % 单位）
             result_plain = result_raw.lstrip("[-−—A-Za-z]")
-            correct_plain = correct_disp.lstrip("[-−—A-Za-z]").rstrip("%")
+            correct_plain = correct_disp.lstrip("[-−—A-Za-z]")
             if result_plain != correct_plain:
                 start = fixed.find(new_frag, last_end) + len(new_frag)
                 fixed, _ = _propagate(fixed, result_plain, correct_plain, start)
@@ -306,6 +316,12 @@ def _self_test():
         ("EOQ = √(2 × 5,000 × 100 ÷ 2) = 707 units", None),
         # 链式中间值（√500,000 后还有 = 707）：跳过，不误改
         ("EOQ = √(2 × 5,000 × 100 ÷ 2) = √500,000 = 707 units", None),
+        # 盲区修复：表达式含 % 时不得 ×100（CAPM 百分比公式）
+        ("Ke = 3.5% + 1.2 × (10% − 3.5%) = 11.3%", None),  # 正确：不改
+        ("Ke = 3.5% + 1.2 × (10% − 3.5%) = 12.5%",
+         "Ke = 3.5% + 1.2 × (10% − 3.5%) = 11.30%"),  # 算错：修正
+        # 表达式不含 % 的结果百分比仍按原逻辑（×100 比较）
+        ("Debt ratio = (RM90,000 + RM50,000) ÷ RM120,000 = 117%", None),
     ]
     ok = True
     for src, expect in samples:
