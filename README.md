@@ -143,7 +143,7 @@ model = PeftModel.from_pretrained(base, 'zhao1145141919/business-admin-answer-he
 - [x] 指令数据集 — **1552 对高质量问答**（v2：计算 1394 / 案例 77 / 概念 53 / 论述 28，含 500 条算术专项强化，全部通过计算器 QC 门）。覆盖：本量利分析、成本与财务比率、统计学、成本分类、弹性预算、制造成本表、加权平均分步成本法、分批成本法、多产品本量利、贡献式利润表、效率/回报率，以及**马来西亚本地案例**（NSRF、Bursa Malaysia、Maybank、MASB、BNM、本地品牌）。所有计算答案均为机器计算并独立复核
 - [x] 训练管线 — `scripts/prepare_dataset.py` + `scripts/train_lora.py` + `notebooks/finetune_qwen25_colab.ipynb`（数据管线与冒烟测试已验证）
 - [x] **真实 GPU 微调（v1 + v2 已验证）** — Qwen2.5-**3B**-Instruct，QLoRA 4-bit，RTX 4060 Laptop 8GB：v1（444 对 / r16）loss 2.46→0.61、验证集 token 准确率 85.7%；**v2（1552 对 / r24）loss→0.28、验证集 token 准确率 94.4%**。也支持 7B；Windows 上需设置 `GLOBAL_WORKERS=1`（见 `docs/TRAINING_GUIDE.md` § Windows 注意事项）
-- [x] **计算器辅助（calculator-assist）** — 推理输出自动提取表达式重算并修正算术错误（比率精度、百分比、取整、分步式等 12 项自测全过）
+- [x] **计算器辅助（calculator-assist）** — 推理输出自动提取表达式重算并修正算术错误；求值内核基于 GitHub 成熟库 **simpleeval**（AST 白名单，vendor 于 `scripts/vendor/`）。百分比统一转小数（`1,000 × 5% = 50` 不再算成 5,000）、传播仅作用于 ≥10 的数值（解读句里独立的 `7` 不再被误改）；29 项自测全过（比率精度、百分比乘除、CAPM、√ 平方根、取整、分步式中间值、负弹性、同值传播）
 - [ ] 评估报告（格式遵循率 + 计算准确率）
 - [ ] 多课程题库扩充
 

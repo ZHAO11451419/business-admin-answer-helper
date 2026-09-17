@@ -3,10 +3,14 @@
 计算器辅助模块（calculator-assist）：自动核验并修正模型输出中的算术错误。
 
 原理：微调模型在计算题中会写出完整的计算表达式（格式训练的效果），
-但 3B 模型的除法/小数运算不可靠。本模块：
+但 3B 模型的除法/小数/百分比运算不可靠。本模块：
   1. 从模型输出中提取 "表达式 = 结果" 模式（如 "72,000 ÷ 4.50 = 20,000"）；
-  2. 用精确有理数运算（Fraction）重算表达式；
+  2. 用 simpleeval（GitHub 成熟 AST 白名单求值库，MIT，见 vendor/）重算表达式；
   3. 与模型给出的结果不一致时，替换为正确结果并保持原格式风格。
+
+百分比处理：表达式内 "数字%" 一律转为 "数字*0.01" 参与运算
+（如 "1,000 × 5%" → 1000 × 0.05 = 50；"3.5% + 1.2 × (10% − 3.5%)" → 0.113），
+结果比较时若模型结果带 "%" 则把计算值 ×100 后再比对（显示为百分比）。
 
 局限：只能修正"表达式完整出现在文本中"的错误；纯心算结论（无表达式）
 无法修正；依赖错误数字的后续推论句不会自动改写。
@@ -15,17 +19,15 @@
   from calc_assist import fix_arithmetic
   fixed, corrections = fix_arithmetic(model_answer)
 """
-import ast
-import operator
 import re
+import sys
+import os
 
-_OPS = {
-    "Div": operator.truediv,
-    "Mult": operator.mul,
-    "Add": operator.add,
-    "Sub": operator.sub,
-    "Pow": operator.pow,  # √ 展开为 **0.5 时使用
-}
+# 优先加载仓库内置的 simpleeval（vendor 版本，离线可用）
+sys.path.insert(
+    0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "vendor")
+)
+from simpleeval import simple_eval  # noqa: E402
 
 _TRANSLATE = str.maketrans({"÷": "/", "×": "*", "−": "-", "—": "-"})
 
@@ -102,38 +104,9 @@ def _iter_sqrt_eq(text):
         yield m
 
 
-class _SafeEval(ast.NodeVisitor):
-    """AST 白名单求值：只允许数字、四则运算、一元负号、括号。"""
-
-    def visit_Constant(self, node):
-        if isinstance(node.value, (int, float)):
-            return node.value
-        raise ValueError("unsupported constant")
-
-    def visit_UnaryOp(self, node):
-        if isinstance(node.op, ast.USub):
-            return -self.visit(node.operand)
-        if isinstance(node.op, ast.UAdd):
-            return self.visit(node.operand)
-        raise ValueError("unsupported unary op")
-
-    def visit_BinOp(self, node):
-        op = _OPS.get(type(node.op).__name__)
-        if op is None:
-            raise ValueError("unsupported binop")
-        return op(self.visit(node.left), self.visit(node.right))
-
-    def visit_Expression(self, node):
-        return self.visit(node.body)
-
-    def generic_visit(self, node):
-        raise ValueError(f"unsupported node: {type(node).__name__}")
-
-
 def _safe_eval(expr: str):
-    """安全求值：解析为 ast 后白名单执行，杜绝任意代码执行。"""
-    tree = ast.parse(expr, mode="eval")
-    return _SafeEval().visit(tree)
+    """安全求值：使用 simpleeval（AST 白名单，杜绝任意代码执行）。"""
+    return simple_eval(expr)
 
 
 def _fmt_result(value, source_num: str) -> str:
@@ -159,12 +132,14 @@ def _fmt_result(value, source_num: str) -> str:
 
 
 def _normalise(s: str) -> str:
-    """把模型文本表达式转成 Python 可求值形式（去掉字母/货币前缀，展开上标与平方根）。"""
+    """把模型文本表达式转成 Python 可求值形式（去字母/货币前缀，% 转小数，展开上标与平方根）。"""
     s = re.sub(r"[A-Za-z]", "", s)  # 先去字母（sqrt 等关键字被删，√ 符号保留）
     s = s.replace("[", "(").replace("]", ")")  # 中括号（模型常用 [] 表示分组）→ 圆括号
     s = s.translate(_TRANSLATE).replace(",", "").strip()
-    s = s.replace("%", "")  # % 在表达式中只是单位标记（3.5% 即 3.5），否则会被 ast 当取模运算
-    # √(expr) / √数字 → 0.5 次幂（求值器已支持 Pow）
+    # 百分比：表达式内 "数字%" → "数字*0.01"（5% 即 0.05），保证乘法语境正确
+    #（1,000 × 5% = 50，而不是 5,000）；CAPM 中 "3.5% + 1.2 × (10% − 3.5%)" 同理
+    s = re.sub(r"(\d[\d,]*(?:\.\d+)?)%", r"\1*0.01", s)
+    # √(expr) / √数字 → 0.5 次幂（simpleeval 支持 **）
     s = re.sub(r"√\s*\(([^()]*)\)", r"(\1)**0.5", s)
     s = re.sub(r"√\s*(\d+(?:\.\d+)?)", r"\1**0.5", s)
     return _expand_supers(s)
@@ -220,11 +195,10 @@ def fix_arithmetic(text: str):
         if re.search(r"\bQ[1-3]\b", expr_raw):
             # 统计符号（Q1/Q3 四分位数等）会被字母前缀误解析，跳过
             continue
-        # 百分比判定：结果本身带 % 且表达式内部不含 % 时，把比值 ×100 后比较
-        #（如 (RM90,000 + RM50,000) ÷ RM120,000 = 117%）。
-        # 若表达式本身已含 %（如 CAPM "3.5% + 1.2 × (10% − 3.5%)"），模型已按 % 单位
-        # 表达，直接比较原值，不得再 ×100，否则会把正确结果误改成 ×100 的错值。
-        is_pct = result_raw.rstrip().endswith("%") and "%" not in expr_raw
+        # 百分比判定：结果本身带 % 时把计算值 ×100 后比较（显示为百分比）。
+        # 表达式内 % 已统一转为 *0.01 参与运算（如 CAPM 算得 0.113 → 显示 11.3%；
+        # 1,000 × 5% 算得 50 → 结果不带 % 则直接比较 50）。
+        is_pct = result_raw.rstrip().endswith("%")
         value_disp = value * 100 if is_pct else value
         stated = re.sub(r"[^\d.]", "", result_raw)
         try:
@@ -235,8 +209,8 @@ def fix_arithmetic(text: str):
             if "." not in stated and abs(value_disp - stated_f) < 1.0:
                 # 整数取整容忍：units 向上取整（5,556 ≈ 5,555.56）或百分比取整（117% ≈ 116.7%）
                 continue
-            if "." in stated and not is_pct and abs(value_disp - stated_f) < 0.01:
-                # 小数四舍五入容忍（0.97 ≈ 0.965）；含小数比率仍严格修正
+            if "." in stated and abs(value_disp - stated_f) < 0.01:
+                # 小数四舍五入容忍（0.97 ≈ 0.965；11.3% ≈ 11.30%）；比率差超 0.01 仍严格修正
                 continue
         if value < 0 and "elastic" not in fixed.lower():
             # 负结果跳过：业务语境中差异/变化常取绝对值（如有利差异 RM40,000），
@@ -259,12 +233,19 @@ def fix_arithmetic(text: str):
             new_frag = f"{expr_raw.strip()} = {correct_disp}"
             corrections.append((old_frag, new_frag))
             fixed = fixed.replace(old_frag, new_frag, 1)
-            # 同值传播：修正点之后出现的孤立旧值（解读句重复）一并纠正（保留 % 单位）
+            # 同值传播：修正点之后出现的孤立旧值（解读句重复）一并纠正（保留 % 单位）。
+            # 个位数（<10）不传播——如 "7 pallets / 7 outlets" 等独立数字与算式结果
+            # 含义无关，传播会误伤；仅传播 >=10 的有意义数值（如 16,000 / 20,000）。
             result_plain = result_raw.lstrip("[-−—A-Za-z]")
             correct_plain = correct_disp.lstrip("[-−—A-Za-z]")
             if result_plain != correct_plain:
-                start = fixed.find(new_frag, last_end) + len(new_frag)
-                fixed, _ = _propagate(fixed, result_plain, correct_plain, start)
+                try:
+                    prop_n = abs(float(result_plain.replace(",", "")))
+                except ValueError:
+                    prop_n = 0
+                if prop_n >= 10:
+                    start = fixed.find(new_frag, last_end) + len(new_frag)
+                    fixed, _ = _propagate(fixed, result_plain, correct_plain, start)
         last_end = m.end()
     return fixed, corrections
 
@@ -322,6 +303,18 @@ def _self_test():
          "Ke = 3.5% + 1.2 × (10% − 3.5%) = 11.30%"),  # 算错：修正
         # 表达式不含 % 的结果百分比仍按原逻辑（×100 比较）
         ("Debt ratio = (RM90,000 + RM50,000) ÷ RM120,000 = 117%", None),
+        # 百分比乘法：5% 应转 0.05（1,000 × 5% = 50，不得算成 5,000）
+        ("Sales tax = 1,000 × 5% = 50 RM", None),  # 正确：不改
+        ("Sales tax = 1,000 × 5% = 5,000 RM",
+         "Sales tax = 1,000 × 5% = 50 RM"),  # 算错：修正为 50
+        # 百分数减法（利润率）：15% − 10% = 5%
+        ("Net margin = 15% − 10% = 5%", None),  # 正确：不改
+        # 传播保护：个位数结果不传播（"7 pallets" 是独立数字，不得改成 8）
+        ("48 ÷ 6 = 7. The company ships 7 pallets per day.",
+         "48 ÷ 6 = 8. The company ships 7 pallets per day."),  # 算式改，解读句保留
+        # 传播正例（>=10 仍传播）
+        ("= (RM54,000 + RM18,000) ÷ RM4.50 = 20,000 units. The firm must sell 20,000 units.",
+         "= (RM54,000 + RM18,000) ÷ RM4.50 = 16,000 units. The firm must sell 16,000 units."),
     ]
     ok = True
     for src, expect in samples:
