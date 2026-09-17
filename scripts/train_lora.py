@@ -1,4 +1,30 @@
-# -*- coding: utf-8 -*-
+import argparse
+import json
+import os
+import sys
+
+
+def _load_dotenv():
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+        return
+    except ImportError:
+        pass
+    env_path = os.path.join(os.getcwd(), ".env")
+    if not os.path.isfile(env_path):
+        return
+    with open(env_path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            v = v.strip().strip('"').strip("'")
+            os.environ.setdefault(k.strip(), v)
+
+
+_load_dotenv()# -*- coding: utf-8 -*-
 """
 Fine-tune a business-administration answer model with LoRA / QLoRA (SFT).
 
@@ -64,24 +90,38 @@ def main():
     parser.add_argument("--max_steps", type=int, default=None)
     parser.add_argument("--val_size", type=float, default=0.05)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--cache_dir", default=os.getenv("CACHE_DIR", ""),
+                        help="HuggingFace 缓存目录")
+    parser.add_argument("--offline", action="store_true",
+                        help="强制离线模式（只用本地缓存）")
     parser.add_argument("--smoke", action="store_true",
                         help="tiny 1-step run to verify the pipeline")
     args = parser.parse_args()
 
-    try:
+        try:
         import torch
         from transformers import (AutoModelForCausalLM, AutoTokenizer,
                                   BitsAndBytesConfig)
-        # Windows + torch 2.11: parallel safetensors mmap->CUDA copies can segfault.
-        # Force single-threaded weight materialization to keep loading stable.
-        import transformers.core_model_loading as _cml
-        _cml.GLOBAL_WORKERS = 1
         from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
         from trl import SFTTrainer, SFTConfig
         from datasets import Dataset
     except ImportError as e:
         sys.exit(f"Missing deps: {e}. Run: pip install -U torch transformers peft trl datasets accelerate" +
                  (" bitsandbytes" if args.use_4bit else ""))
+
+    # Windows + torch 2.11 单线程加载补丁（版本不匹配时不报错）
+    try:
+        import transformers.core_model_loading as _cml
+        _cml.GLOBAL_WORKERS = 1
+    except Exception:
+        pass
+
+    # Windows + torch 2.11 单线程加载补丁（版本不匹配时不报错）
+    try:
+        import transformers.core_model_loading as _cml
+        _cml.GLOBAL_WORKERS = 1
+    except Exception:
+        pass
 
     if args.smoke:
         args.batch_size = 1
@@ -92,8 +132,14 @@ def main():
         args.max_length = 512
         print("[smoke] overriding to batch=1, max_steps=2, no 4bit")
 
+       cache_dir = args.cache_dir or os.getenv("CACHE_DIR", "").strip() or None
+    local_only = args.offline or os.getenv("LOCAL_FILES_ONLY", "false").lower() in ("1", "true", "yes", "on")
+
     print(f"Loading base model: {args.model_name}")
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(
+        args.model_name, trust_remote_code=True,
+        cache_dir=cache_dir, local_files_only=local_only,
+    )
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
@@ -106,11 +152,12 @@ def main():
         )
     else:
         bnb = None
-    model = AutoModelForCausalLM.from_pretrained(
+       model = AutoModelForCausalLM.from_pretrained(
         args.model_name,
         quantization_config=bnb,
         device_map="auto" if torch.cuda.is_available() else "cpu",
         trust_remote_code=True,
+        cache_dir=cache_dir, local_files_only=local_only,
     )
     if args.use_4bit:
         model = prepare_model_for_kbit_training(model)
