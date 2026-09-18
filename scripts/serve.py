@@ -90,22 +90,42 @@ DEFAULT_HOST = os.getenv("HOST", "127.0.0.1")
 DEFAULT_PORT = int(os.getenv("PORT", "7860"))
 
 
-def build(base_name, adapter_path, cache_dir=None, local_files_only=False):
-    bnb = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_compute_dtype=torch.bfloat16,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_use_double_quant=True,
-    )
-    print(f"Loading base model: {base_name} (4-bit)...", flush=True)
-    base = AutoModelForCausalLM.from_pretrained(
-        base_name,
-        quantization_config=bnb,
-        device_map="auto",
-        dtype=torch.bfloat16,
-        cache_dir=cache_dir or None,
-        local_files_only=local_files_only,
-    )
+def build(base_name, adapter_path, cache_dir=None, local_files_only=False,
+          use_4bit=None):
+    """加载基座 + LoRA adapter。
+
+    use_4bit：None=自动（有 CUDA 用 4-bit，否则 CPU bfloat16），
+              True=强制 4-bit，False=强制 CPU/bfloat16（无 GPU 环境必须）。
+    """
+    if use_4bit is None:
+        use_4bit = torch.cuda.is_available()
+    if use_4bit:
+        bnb = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_use_double_quant=True,
+        )
+        print(f"Loading base model: {base_name} (4-bit GPU)...", flush=True)
+        base = AutoModelForCausalLM.from_pretrained(
+            base_name,
+            quantization_config=bnb,
+            device_map="auto",
+            dtype=torch.bfloat16,
+            cache_dir=cache_dir or None,
+            local_files_only=local_files_only,
+        )
+    else:
+        print(f"Loading base model: {base_name} (CPU bfloat16, 无 GPU——"
+              f"推理较慢，属正常现象)...", flush=True)
+        base = AutoModelForCausalLM.from_pretrained(
+            base_name,
+            device_map="cpu",
+            torch_dtype=torch.bfloat16,
+            low_cpu_mem_usage=True,
+            cache_dir=cache_dir or None,
+            local_files_only=local_files_only,
+        )
     print(f"Attaching LoRA adapter: {adapter_path}...", flush=True)
     model = PeftModel.from_pretrained(
         base, adapter_path, cache_dir=cache_dir or None
@@ -148,6 +168,50 @@ def build_messages(history, current_question, max_turns=12):
     return messages
 
 
+def _history_self_test():
+    """对话历史顺序自测：不加载模型，验证时间线正序与截断逻辑。
+
+    运行：python scripts/serve.py --check_history
+    """
+    cases = [
+        # (history, current_question, 期望消息列表)
+        (("Q3", [("Q1", "A1"), ("Q2", "A2")]),
+         [{"role": "user", "content": "Q1"}, {"role": "assistant", "content": "A1"},
+          {"role": "user", "content": "Q2"}, {"role": "assistant", "content": "A2"},
+          {"role": "user", "content": "Q3"}]),
+        # openai 风格字典
+        (("Q2", [{"role": "user", "content": "Q1"}, {"role": "assistant", "content": "A1"}]),
+         [{"role": "user", "content": "Q1"}, {"role": "assistant", "content": "A1"},
+          {"role": "user", "content": "Q2"}]),
+        # 截断：24 轮只保留最近 12 轮（user/assistant 交替正序），且当前问题仍在最后
+        (("LAST", [("Q%d" % i, "A%d" % i) for i in range(24)]),
+         [m for i in range(12, 24) for m in (
+             {"role": "user", "content": "Q%d" % i},
+             {"role": "assistant", "content": "A%d" % i},
+         )] + [{"role": "user", "content": "LAST"}]),
+        # multimodal 内容取纯文本；空角色丢弃
+        (("Q2", [{"role": "user", "content": [{"type": "text", "text": "Q1"},
+                                              {"type": "image", "text": "img"}]},
+                {"role": "assistant", "content": "A1"},
+                {"role": "user", "content": ""}]),
+         [{"role": "user", "content": "Q1"}, {"role": "assistant", "content": "A1"},
+          {"role": "user", "content": "Q2"}]),
+        # 空历史：只有当前问题
+        (("ONLY", []), [{"role": "user", "content": "ONLY"}]),
+    ]
+    ok = True
+    for (msg, history), expect in cases:
+        got = build_messages(history, msg)
+        status = "OK" if got == expect else "FAIL"
+        ok = ok and (got == expect)
+        print(f"{status}: message={msg!r} history={len(history)}轮")
+        if got != expect:
+            print(f"  expect: {expect}")
+            print(f"  got:    {got}")
+    print("HISTORY SELF-TEST ALL PASS" if ok else "HISTORY SELF-TEST FAILED")
+    return ok
+
+
 def main():
     parser = argparse.ArgumentParser(description="工商管理答题助手 - Gradio 网页界面")
     parser.add_argument("--base", default=DEFAULT_BASE,
@@ -160,13 +224,27 @@ def main():
                         help="强制离线模式，只使用本地缓存（首次运行请勿开启）")
     parser.add_argument("--host", default=DEFAULT_HOST, help="监听地址")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="端口号")
+    parser.add_argument("--check_history", action="store_true",
+                        help="只运行对话历史顺序自测（不加载模型）")
+    parser.add_argument("--force_cpu", action="store_true",
+                        help="强制 CPU 加载（无 GPU 或有 GPU 但想用 CPU 时）")
     args = parser.parse_args()
+
+    if args.check_history:
+        sys.exit(0 if _history_self_test() else 1)
 
     cache_dir = args.cache_dir or os.getenv("CACHE_DIR", "").strip() or None
     offline = args.offline or _offline_env
 
+    use_4bit = None if not args.force_cpu else False
+    if use_4bit is None:
+        use_4bit = torch.cuda.is_available()
+    if use_4bit is False and torch.cuda.is_available():
+        print("--force_cpu 指定，强制 CPU 加载。", flush=True)
+
     model, tokenizer = build(args.base, args.adapter,
-                             cache_dir=cache_dir, local_files_only=offline)
+                             cache_dir=cache_dir, local_files_only=offline,
+                             use_4bit=use_4bit)
 
     def respond(message, history):
         messages = build_messages(history, message)

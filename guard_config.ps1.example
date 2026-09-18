@@ -1,0 +1,9 @@
+﻿# Template for guard_config.ps1: copy to guard_config.ps1 and fill in.
+# (guard_config.ps1 is gitignored and never committed.)
+# Empty values fall back to env vars (BAH_ADAPTER / BAH_LOG_DIR / BAH_PYTHON /
+# BAH_PORT) or to the defaults inside scripts/guard_server.ps1.
+$BAH_Adapter = ''   # e.g. 'D:/ai/outputs/business-admin-answer-helper-3b-v2/adapter'
+                    # or 'zhaoweichang/business-admin-answer-helper'
+$BAH_LogDir  = ''   # e.g. 'D:\ai\logs' (default: <repo>/logs)
+$BAH_Python  = ''   # e.g. 'C:\path\to\python.exe' (default: auto-detect repo venv)
+$BAH_Port    = 7860 # e.g. 7860

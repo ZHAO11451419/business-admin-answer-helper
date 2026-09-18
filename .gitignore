@@ -21,6 +21,7 @@ runs/
 
 # Local environment
 .env
+guard_config.ps1
 .DS_Store
 Thumbs.db
 

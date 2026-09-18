@@ -27,9 +27,13 @@
 business-admin-answer-helper/
 ├── README.md              # 本文件
 ├── LICENSE                # Apache-2.0
+├── requirements.txt       # 依赖清单（pip install -r requirements.txt）
+├── .env.example           # 环境配置模板（复制为 .env 按需修改）
+├── guard_config.ps1.example # 守护脚本本机配置模板（复制为 guard_config.ps1）
 ├── docs/
 │   ├── answering-guide.md # 答题格式规范（核心资产）
 │   ├── TRAINING_GUIDE.md  # 训练/评估/发布完整手册
+│   ├── USAGE.md           # 四种运行方式
 │   └── MODEL_CARD.md      # Hugging Face 模型卡
 ├── data/
 │   ├── train.jsonl        # 指令数据集（问题 → 高分答案）
@@ -45,7 +49,10 @@ business-admin-answer-helper/
 │   ├── prepare_dataset.py # 数据校验 + 分层划分（无需 torch）
 │   ├── train_lora.py      # 标准 LoRA/QLoRA 监督微调（transformers + peft + trl）
 │   ├── evaluate.py        # 评估格式遵循率 + 计算准确率
-│   └── serve.py           # 本地 Gradio 演示
+│   ├── serve.py           # 本地 Gradio 演示（自动 GPU/CPU 降级）
+│   ├── calc_assist.py     # 计算器外挂（simpleeval 内核，自动修正算术）
+│   ├── guard_server.ps1   # Windows 守护脚本（端口掉线自动拉起）
+│   └── vendor/            # 内置第三方库（simpleeval，MIT）
 ├── examples/
 │   └── in-out-pairs.md    # 人工可读的输入 → 输出示例
 └── .gitignore
@@ -101,13 +108,13 @@ python scripts/train_lora.py --smoke --model_name Qwen/Qwen2.5-0.5B-Instruct
 ### 评估
 
 ```bash
-python scripts/evaluate.py --model path/to/adapter --test data/train.jsonl
+python scripts/evaluate.py --model path/to/merged --test data/train.jsonl
 ```
 
 ### 运行演示
 
 ```bash
-python scripts/serve.py --model path/to/adapter
+python scripts/serve.py --adapter path/to/adapter --base Qwen/Qwen2.5-3B-Instruct
 ```
 
 ## 模型权重
@@ -120,7 +127,7 @@ python scripts/serve.py --model path/to/adapter
 | **ModelScope（魔搭）** | [zhao1145141919/business-admin-answer-helper](https://modelscope.cn/models/zhao1145141919/business-admin-answer-helper) | **中国大陆用户直连，无需 VPN** |
 | **在线体验（创空间）** | [business-admin-answer-helper](https://www.modelscope.cn/studios/zhao1145141919/business-admin-answer-helper) | 打开即聊，无需部署；已内置计算器外挂（自动修正算术） |
 
-> 发布的是基于 Qwen2.5-3B-Instruct 训练的 **LoRA 适配器**（r=24 / α=48），训练数据来自本仓库 **1552 对**指令数据集（v2，验证集 token 准确率 **94.4%**）。使用方法与完整指标见模型主页。
+> 发布的是基于 Qwen2.5-3B-Instruct 训练的 **LoRA 适配器**（r=24 / α=48），训练数据来自本仓库 **1552 对**指令数据集（v2，验证集 token 准确率 **94.4%**）。数据集已扩充至 **1699 对**（v3，训练中断待重跑）。使用方法与完整指标见模型主页。
 
 ### 中国大陆用户：ModelScope 直连（免 VPN）
 
@@ -140,9 +147,9 @@ model = PeftModel.from_pretrained(base, 'zhao1145141919/business-admin-answer-he
 ## 路线图
 
 - [x] 仓库骨架 + 答题格式规范
-- [x] 指令数据集 — **1552 对高质量问答**（v2：计算 1394 / 案例 77 / 概念 53 / 论述 28，含 500 条算术专项强化，全部通过计算器 QC 门）。覆盖：本量利分析、成本与财务比率、统计学、成本分类、弹性预算、制造成本表、加权平均分步成本法、分批成本法、多产品本量利、贡献式利润表、效率/回报率，以及**马来西亚本地案例**（NSRF、Bursa Malaysia、Maybank、MASB、BNM、本地品牌）。所有计算答案均为机器计算并独立复核
+- [x] 指令数据集 — **1699 对高质量问答**（v3 扩充：在 v2 1552 对基础上 +147 条"中间步骤必展开"强化样本，全部通过计算器 QC 门）。覆盖：本量利分析、成本与财务比率、统计学、成本分类、弹性预算、制造成本表、加权平均分步成本法、分批成本法、多产品本量利、贡献式利润表、效率/回报率，以及**马来西亚本地案例**（NSRF、Bursa Malaysia、Maybank、MASB、BNM、本地品牌）。所有计算答案均为机器计算并独立复核
 - [x] 训练管线 — `scripts/prepare_dataset.py` + `scripts/train_lora.py` + `notebooks/finetune_qwen25_colab.ipynb`（数据管线与冒烟测试已验证）
-- [x] **真实 GPU 微调（v1 + v2 已验证）** — Qwen2.5-**3B**-Instruct，QLoRA 4-bit，RTX 4060 Laptop 8GB：v1（444 对 / r16）loss 2.46→0.61、验证集 token 准确率 85.7%；**v2（1552 对 / r24）loss→0.28、验证集 token 准确率 94.4%**。也支持 7B；Windows 上需设置 `GLOBAL_WORKERS=1`（见 `docs/TRAINING_GUIDE.md` § Windows 注意事项）
+- [x] **真实 GPU 微调（v1 + v2 已验证，v3 训练中）** — Qwen2.5-**3B**-Instruct，QLoRA 4-bit，RTX 4060 Laptop 8GB：v1（444 对 / r16）loss 2.46→0.61、验证集 token 准确率 85.7%；**v2（1552 对 / r24）loss→0.28、验证集 token 准确率 94.4%**；v3（1699 对）训练日志停在 30/288（loss 0.5592 / acc 0.843），**中断未完成，待恢复重跑**。也支持 7B；Windows 上需设置 `GLOBAL_WORKERS=1`（见 `docs/TRAINING_GUIDE.md` § Windows 注意事项）
 - [x] **计算器辅助（calculator-assist）** — 推理输出自动提取表达式重算并修正算术错误；求值内核基于 GitHub 成熟库 **simpleeval**（AST 白名单，vendor 于 `scripts/vendor/`）。百分比统一转小数（`1,000 × 5% = 50` 不再算成 5,000）、传播仅作用于 ≥10 的数值（解读句里独立的 `7` 不再被误改）；29 项自测全过（比率精度、百分比乘除、CAPM、√ 平方根、取整、分步式中间值、负弹性、同值传播）
 - [ ] 评估报告（格式遵循率 + 计算准确率）
 - [ ] 多课程题库扩充

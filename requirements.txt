@@ -1,0 +1,20 @@
+# 工商管理答题助手（BAH）依赖清单
+# 安装：pip install -r requirements.txt
+# 说明：torch 安装体积大，建议先按官方指引装好 CUDA 版 torch 再装其余依赖；
+#       无 GPU 也能跑（serve.py 会自动降级 CPU，速度较慢）。
+
+# --- 推理（本地网页 / 命令行） ---
+transformers>=4.46
+peft>=0.13
+bitsandbytes>=0.43        # 仅 GPU 4-bit 量化需要；CPU-only 可注释掉
+accelerate>=0.34
+safetensors>=0.4
+gradio>=5.0,<6            # 钉在 5.x：6.x 前端复制/操作按钮有兼容性问题
+python-dotenv>=1.0        # serve.py 读取 .env 配置
+
+# --- 训练（可选，只在要复现微调时安装） ---
+trl>=0.12
+datasets>=2.20
+
+# --- 中国大陆直连 ModelScope 方式（可选） ---
+# modelscope>=1.30

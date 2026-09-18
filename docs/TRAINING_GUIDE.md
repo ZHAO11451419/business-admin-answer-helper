@@ -6,7 +6,7 @@
 
 ## 0. 前置要求
 
-- **数据**：`data/train.jsonl`（444 对）已在本仓库，无需准备
+- **数据**：`data/train.jsonl`（1699 对，已含 v3 扩充集）已在本仓库，无需准备
 - **GPU**：推荐免费 Colab T4（16GB）或任意 ≥16GB 显存的 GPU
 - **不需要**：任何 UPM 内部资料 / 教材原文（数据全部是原创与公开事实改写，可安全开源）
 
@@ -19,7 +19,7 @@
 2. **Runtime → Change runtime type → T4 GPU**
 3. 从上到下依次运行 cell：
    - Cell 1：安装依赖（约 1-2 分钟）
-   - Cell 2：从 GitHub 下载 `train.jsonl`（444 对）
+   - Cell 2：从 GitHub 下载 `train.jsonl`（1699 对）
    - Cell 3：4-bit 加载 Qwen2.5-7B（QLoRA）
    - Cell 4：挂载 LoRA 适配器（仅 ~1.7% 参数可训练）
    - Cell 5：**训练**（3 epochs，T4 约 25-40 分钟）
@@ -28,7 +28,7 @@
    - Cell 8：（可选）推送到 Hugging Face
 4. 训练期间如果中断：checkpoint 保存在 `outputs/business-admin-answer-helper/checkpoint-*`，可下载到本地留档
 
-> **参数建议**：444 条数据量小，`EPOCHS=3` 起步；若验证集 loss 仍在下降，可提到 5。`LR=2e-4`、`r=16`、`lora_alpha=32` 是稳妥默认值。
+> **参数建议**：1699 条数据量小，`EPOCHS=3` 起步；若验证集 loss 仍在下降，可提到 5。`LR=2e-4`、`r=16`、`lora_alpha=32` 是稳妥默认值。
 
 ---
 
@@ -64,7 +64,7 @@ python scripts/train_lora.py \
 | 内存不足（16GB 机器、小 pagefile） | 加载 merged 16-bit 模型推理时卡死或 `os error 1455 页面文件太小` | 推理请用 4-bit 加载；训练本身（模型在显存）不受影响 |
 | Python 3.14 | 旧版 torch 无 cp314 wheel | 装最新 cu128 版 torch；transformers≥5.16 适配 |
 
-实测结果（3B，444 对，3 epoch）：train loss 2.46→0.61；eval loss 0.56；**eval token 准确率 85.7%**。
+实测结果（3B，1699 对，3 epoch，v3 训练中断未完成）：此前 v2 发布版为 1552 对，eval token 准确率 94.4%；v3 目标补强"中间步骤必展开"与算术短板，训练日志停在 30/288（loss 0.5592 / mean_token_accuracy 0.843），待重新跑通。
 
 ### 无 GPU 冒烟验证（可选）
 
@@ -101,7 +101,7 @@ python scripts/evaluate.py \
 
 ```bash
 pip install gradio
-python scripts/serve.py --model outputs/business-admin-answer-helper/merged
+python scripts/serve.py --adapter outputs/business-admin-answer-helper/merged --base Qwen/Qwen2.5-3B-Instruct
 # 浏览器打开 http://127.0.0.1:7860
 ```
 

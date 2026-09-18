@@ -47,10 +47,12 @@ print(answer)
 ## 0. 依赖（方式一、二需要）
 
 ```bash
-pip install -U torch transformers peft bitsandbytes
+pip install -r requirements.txt
 ```
 
-本项目仓库内的 `.venv_train` 虚拟环境已装好全部依赖，可直接使用。
+> 若只需要 CPU 推理（无 GPU），可先注释掉 `requirements.txt` 中的 `bitsandbytes`；
+> 首次运行需联网下载模型权重（约 2GB），之后可用 `.env` 配置 `CACHE_DIR` 指定缓存目录
+> （参考仓库根 `.env.example`）。
 
 ---
 
@@ -91,16 +93,20 @@ print(answer)
 仓库内置演示脚本：
 
 ```bash
-python scripts/serve.py --model zhaoweichang/business-admin-answer-helper
+# 首次运行：复制 .env.example 为 .env（可选，不复制也能用默认值）
+python scripts/serve.py --adapter zhaoweichang/business-admin-answer-helper
 ```
 
 然后浏览器打开 **http://127.0.0.1:7860** 即可对话。
 
-若本地已有合并后的完整模型，也可以直接指定本地路径：
+若本地已有训练好的 adapter 目录，也可以直接指定本地路径：
 
 ```bash
-python scripts/serve.py --model outputs/business-admin-answer-helper/merged
+python scripts/serve.py --adapter D:/path/to/adapter --base Qwen/Qwen2.5-3B-Instruct
 ```
+
+常用参数：`--offline`（离线，只读本地缓存）、`--cache_dir`（指定缓存目录）、
+`--force_cpu`（强制 CPU，无 GPU 环境自动降级无需手动指定）、`--port`（改端口）。
 
 ---
 
@@ -123,7 +129,7 @@ python scripts/serve.py --model outputs/business-admin-answer-helper/merged
 | 加载时内存不足 / 卡死 | 4-bit 加载已是最低内存方案；仍不足时请调大虚拟内存（见下），或改用方式三 Colab |
 | `OSError: 页面文件太小` (os error 1455) | Windows 虚拟内存（页面文件）过小。设置 → 系统 → 关于 → 高级系统设置 → 性能设置 → 高级 → 虚拟内存 → 改为 **16-24GB** 或"系统管理的大小"，重启生效 |
 | Windows 加载 safetensors 段错误（0xC0000005） | 已在 `scripts/train_lora.py` 内置单线程加载修复（`GLOBAL_WORKERS=1`）；推理脚本可自行加同样的补丁 |
-| 没有 GPU，只有 CPU | 代码可运行（`device_map="auto"` 会落到 CPU），但生成较慢（一条答案数十秒），建议用 Colab |
+| 没有 GPU，只有 CPU | `serve.py` 会自动检测并降级为 CPU bfloat16 加载（打印提示，不用手动指定）；生成较慢（一条答案数十秒），建议用方式三 Colab |
 | 网络无法访问 huggingface.co | 中国大陆用户请直接用 **方式〇（ModelScope 直连）**，无需 VPN；或离线加载：先把权重下载到本地，再把模型名换成本地目录路径 |
 
 ---
