@@ -90,6 +90,46 @@ DEFAULT_HOST = os.getenv("HOST", "127.0.0.1")
 DEFAULT_PORT = int(os.getenv("PORT", "7860"))
 
 
+# 本项目权重在 HF 与 ModelScope 双平台发布，名称不同；HF 失败时按此映射回退 ModelScope
+_MS_MIRROR = {
+    "zhaoweichang/business-admin-answer-helper": "zhao1145141919/business-admin-answer-helper",
+}
+
+
+def _resolve_model(model_id, cache_dir, offline):
+    """把模型名/仓库 ID 解析为本地可加载路径。
+
+    顺序：本地目录 → Hugging Face → ModelScope（中国大陆可直连，免 VPN）。
+    任何电脑 clone 后直接 `python scripts/serve.py` 都能跑：
+    有国际网络的走 HF，大陆用户自动回退 ModelScope 下载。
+    """
+    if model_id and os.path.isdir(model_id):
+        return model_id
+    if offline:
+        return model_id  # 离线模式直接用原值（依赖本地已有缓存）
+    if cache_dir:
+        cache_dir = os.path.expanduser(cache_dir)
+    try:
+        from huggingface_hub import snapshot_download as _hf_snap
+        print(f"尝试从 Hugging Face 下载 {model_id} ...", flush=True)
+        return _hf_snap(model_id, cache_dir=cache_dir)
+    except Exception as _e:
+        print(f"HF 下载不可用（{type(_e).__name__}），自动改用 ModelScope 国内直连 ...",
+              flush=True)
+    try:
+        from modelscope import snapshot_download as _ms_snap
+        ms_id = _MS_MIRROR.get(model_id, model_id)
+        ms_cache = cache_dir or os.path.join(os.getcwd(), ".model_cache")
+        print(f"ModelScope 下载 {ms_id} -> {ms_cache}", flush=True)
+        return _ms_snap(ms_id, cache_dir=ms_cache)
+    except Exception as _e2:
+        raise RuntimeError(
+            f"模型 {model_id} 下载失败：Hugging Face 与 ModelScope 均不可用"
+            f"（{type(_e2).__name__}）。请检查网络，或把模型下载到本地后"
+            f"在 .env 的 BASE_MODEL / ADAPTER_PATH 填本地路径。"
+        ) from _e2
+
+
 def build(base_name, adapter_path, cache_dir=None, local_files_only=False,
           use_4bit=None):
     """加载基座 + LoRA adapter。
@@ -242,7 +282,11 @@ def main():
     if use_4bit is False and torch.cuda.is_available():
         print("--force_cpu 指定，强制 CPU 加载。", flush=True)
 
-    model, tokenizer = build(args.base, args.adapter,
+    # 解析基座与 adapter：本地路径直接使用；仓库 ID 自动 HF → ModelScope 回退
+    base_local = _resolve_model(args.base, cache_dir, offline)
+    adapter_local = _resolve_model(args.adapter, cache_dir, offline)
+
+    model, tokenizer = build(base_local, adapter_local,
                              cache_dir=cache_dir, local_files_only=offline,
                              use_4bit=use_4bit)
 

@@ -117,6 +117,9 @@ python scripts/evaluate.py --model path/to/merged --test data/train.jsonl
 python scripts/serve.py --adapter path/to/adapter --base Qwen/Qwen2.5-3B-Instruct
 ```
 
+> **开箱即用**：`serve.py` 自动适配网络环境——按 本地路径 → Hugging Face → ModelScope 顺序解析权重。
+> 中国大陆用户无需 VPN：HF 不可达时自动回退 ModelScope 国内直连下载并缓存。
+
 ## 模型权重
 
 微调权重已发布在**双平台**：

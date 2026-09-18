@@ -16,6 +16,7 @@ venv/
 
 # Data caches
 .cache/
+.model_cache/
 wandb/
 runs/
 

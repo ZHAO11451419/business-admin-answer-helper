@@ -90,12 +90,17 @@ print(answer)
 
 ## 方式二：网页界面（Gradio，适合日常使用）
 
-仓库内置演示脚本：
+仓库内置演示脚本（**任何电脑 clone 后一条命令即可运行**）：
 
 ```bash
-# 首次运行：复制 .env.example 为 .env（可选，不复制也能用默认值）
+# 首次运行：pip install -r requirements.txt
+# 复制 .env.example 为 .env（可选，不复制也能用默认值）
 python scripts/serve.py --adapter zhaoweichang/business-admin-answer-helper
 ```
+
+> **权重自动适配**：`serve.py` 按 本地路径 → Hugging Face → ModelScope 的顺序解析基座与 adapter。
+> 国际网络自动走 HF；中国大陆用户（HF 不可达）**自动回退 ModelScope 国内直连，无需 VPN、无需手动下载**，
+> 权重缓存到 `CACHE_DIR`（或仓库 `.model_cache/`）。
 
 然后浏览器打开 **http://127.0.0.1:7860** 即可对话。
 
@@ -130,7 +135,7 @@ python scripts/serve.py --adapter D:/path/to/adapter --base Qwen/Qwen2.5-3B-Inst
 | `OSError: 页面文件太小` (os error 1455) | Windows 虚拟内存（页面文件）过小。设置 → 系统 → 关于 → 高级系统设置 → 性能设置 → 高级 → 虚拟内存 → 改为 **16-24GB** 或"系统管理的大小"，重启生效 |
 | Windows 加载 safetensors 段错误（0xC0000005） | 已在 `scripts/train_lora.py` 内置单线程加载修复（`GLOBAL_WORKERS=1`）；推理脚本可自行加同样的补丁 |
 | 没有 GPU，只有 CPU | `serve.py` 会自动检测并降级为 CPU bfloat16 加载（打印提示，不用手动指定）；生成较慢（一条答案数十秒），建议用方式三 Colab |
-| 网络无法访问 huggingface.co | 中国大陆用户请直接用 **方式〇（ModelScope 直连）**，无需 VPN；或离线加载：先把权重下载到本地，再把模型名换成本地目录路径 |
+| 网络无法访问 huggingface.co | 中国大陆用户无需配置：`serve.py` 检测到 HF 不可达会自动回退 ModelScope 国内直连（免 VPN）。也可按 方式〇 手动走 ModelScope，或离线加载：先把权重下载到本地，再把模型名换成本地目录路径 |
 
 ---
 

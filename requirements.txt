@@ -11,10 +11,8 @@ accelerate>=0.34
 safetensors>=0.4
 gradio>=5.0,<6            # 钉在 5.x：6.x 前端复制/操作按钮有兼容性问题
 python-dotenv>=1.0        # serve.py 读取 .env 配置
+modelscope>=1.30          # 中国大陆直连下载权重（HF 不可用时自动回退）
 
 # --- 训练（可选，只在要复现微调时安装） ---
 trl>=0.12
 datasets>=2.20
-
-# --- 中国大陆直连 ModelScope 方式（可选） ---
-# modelscope>=1.30
