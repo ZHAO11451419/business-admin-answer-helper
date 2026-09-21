@@ -52,7 +52,7 @@ as $$
     'unique_sessions', count(distinct session_id) filter (where event_type = 'chat'),
     'positive_feedback', count(*) filter (where event_type = 'feedback' and feedback = 'positive'),
     'negative_feedback', count(*) filter (where event_type = 'feedback' and feedback = 'negative'),
-    'avg_latency_ms', coalesce(round(avg(latency_ms)::numeric, 2) filter (where event_type = 'chat'), 0)
+    'avg_latency_ms', coalesce(round(avg(latency_ms) filter (where event_type = 'chat')::numeric, 2), 0)
   )
   from public.usage_events;
 $$;
