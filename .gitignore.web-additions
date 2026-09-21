@@ -1,0 +1,14 @@
+# BAH Web v2 additions
+.env
+.env.*
+!.env.example
+backend/.venv/
+frontend/node_modules/
+frontend/.next/
+__pycache__/
+*.py[cod]
+.model_cache/
+.hf_cache/
+model_cache/
+*.log
+exports/

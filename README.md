@@ -120,6 +120,42 @@ python scripts/serve.py --adapter path/to/adapter --base Qwen/Qwen2.5-3B-Instruc
 > **开箱即用**：`serve.py` 自动适配网络环境——按 本地路径 → Hugging Face → ModelScope 顺序解析权重。
 > 中国大陆用户无需 VPN：HF 不可达时自动回退 ModelScope 国内直连下载并缓存。
 
+## Web 版部署（v2）
+
+从 v2 开始，BAH 升级为**生产级 Web 应用**：任何用户打开浏览器即可使用，无需安装 Python / CUDA / PyTorch / 模型权重；模型推理跑在云端 GPU（vLLM），FastAPI 网关负责限流、反馈与日志，Supabase 匿名存储使用统计，前端为 Next.js 响应式网页。
+
+```
+浏览器 → Next.js 前端(HTTPS) → FastAPI 网关 → 内部 vLLM(127.0.0.1:8000) → Qwen2.5-3B-Instruct + BAH LoRA
+```
+
+- 新增目录：`backend/`（FastAPI 网关）、`frontend/`（Next.js 前端）、`inference/`（vLLM + FastAPI GPU 容器）、`supabase/`（分析数据库 schema）
+- 本地无 GPU 快速体验：后端 `INFERENCE_MODE=mock` + 前端 `npm run dev`（见下文"30 秒本地跑通"）
+- 完整部署手册：**[`docs/WEB_DEPLOYMENT.md`](docs/WEB_DEPLOYMENT.md)**（本地测试 → Supabase → GPU Docker → Vercel 上线 → 端到端验收）
+- `scripts/serve.py` 仍保留为本地 Gradio 演示入口，与 Web 版并存，互不影响。
+
+### 30 秒本地跑通（无需 GPU）
+
+后端（终端 1）：
+
+```powershell
+cd backend
+python -m venv .venv && .\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+Copy-Item .env.example .env   # 保持 INFERENCE_MODE=mock 即可
+uvicorn main:app --reload --port 8000
+```
+
+前端（终端 2）：
+
+```powershell
+cd frontend
+npm install
+Copy-Item .env.example .env.local
+npm run dev
+```
+
+浏览器打开 http://localhost:3000，即可用 mock 模式测试完整链路（提问 → 回答 → 👍/👎 反馈 → 管理后台）。
+
 ## 模型权重
 
 微调权重已发布在**双平台**：

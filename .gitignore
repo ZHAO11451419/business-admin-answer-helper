@@ -36,3 +36,18 @@ data/raw/*
 
 # studio_app 是独立 git 仓库（ModelScope 创空间部署），主仓库不跟踪其内容
 studio_app/
+
+# === BAH Web v2 追加规则 ===
+.env
+.env.*
+!.env.example
+backend/.venv/
+frontend/node_modules/
+frontend/.next/
+__pycache__/
+*.py[cod]
+.model_cache/
+.hf_cache/
+model_cache/
+*.log
+exports/
