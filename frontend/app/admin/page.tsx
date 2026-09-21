@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { downloadAdminExport, fetchAdminOverview } from "@/lib/api";
+import { downloadAdminExport, fetchAdminOverview } from "../../lib/api";
 
 export default function AdminPage() {
   const [key, setKey] = useState("");

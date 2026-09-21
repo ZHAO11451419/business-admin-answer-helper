@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { sendChat, sendFeedback } from "@/lib/api";
+import { sendChat, sendFeedback } from "../lib/api";
 
 
 type Message = {
