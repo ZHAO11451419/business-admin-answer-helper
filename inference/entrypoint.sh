@@ -1,38 +1,54 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${VLLM_MODEL:=bah}"
-: "${BASE_MODEL:=Qwen/Qwen2.5-3B-Instruct}"
-: "${LORA_REPO:=zhaoweichang/business-admin-answer-helper}"
-: "${VLLM_API_KEY:=change-me}"
-: "${PUBLIC_PORT:=8080}"
-: "${MAX_MODEL_LEN:=8192}"
-: "${GPU_MEMORY_UTILIZATION:=0.90}"
+BASE_MODEL="${BASE_MODEL:-Qwen/Qwen2.5-3B-Instruct}"
+LORA_REPO="${LORA_REPO:-zhaoweichang/business-admin-answer-helper}"
+LORA_NAME="${LORA_NAME:-bah}"
+LORA_DIR="${LORA_DIR:-/root/.cache/huggingface/bah-lora}"
+VLLM_HOST="${VLLM_HOST:-127.0.0.1}"
+VLLM_PORT="${VLLM_PORT:-8000}"
+API_HOST="${API_HOST:-0.0.0.0}"
+API_PORT="${API_PORT:-8080}"
+GPU_MEMORY_UTILIZATION="${GPU_MEMORY_UTILIZATION:-0.85}"
+MAX_MODEL_LEN="${MAX_MODEL_LEN:-4096}"
+MAX_NUM_SEQS="${MAX_NUM_SEQS:-8}"
+VLLM_STARTUP_TIMEOUT="${VLLM_STARTUP_TIMEOUT:-900}"
 
-export INFERENCE_MODE=remote
-export VLLM_BASE_URL="http://127.0.0.1:8000"
-export VLLM_MODEL="${VLLM_MODEL}"
-export VLLM_API_KEY="${VLLM_API_KEY}"
-export PYTHONPATH="/app/backend:/app"
+mkdir -p "${LORA_DIR}"
 
-# Your current published adapter is rank 24. vLLM's allowed maximum should
-# therefore be at least 32. See the repository README and vLLM LoRA docs.
-vllm serve "${BASE_MODEL}" \
-  --host 127.0.0.1 \
-  --port 8000 \
-  --served-model-name "${VLLM_MODEL}" \
+python3 - <<'PY2'
+import os
+from huggingface_hub import snapshot_download
+repo_id = os.environ.get("LORA_REPO", "zhaoweichang/business-admin-answer-helper")
+local_dir = os.environ.get("LORA_DIR", "/root/.cache/huggingface/bah-lora")
+token = os.environ.get("HF_TOKEN") or None
+print(f"[BAH] Checking LoRA repo: {repo_id}", flush=True)
+snapshot_download(repo_id=repo_id, local_dir=local_dir, token=token)
+print(f"[BAH] LoRA ready at: {local_dir}", flush=True)
+PY2
+
+echo "[BAH] Starting vLLM 0.8.5..." >&2
+python3 -m vllm.entrypoints.openai.api_server \
+  --model "${BASE_MODEL}" \
+  --host "${VLLM_HOST}" \
+  --port "${VLLM_PORT}" \
   --enable-lora \
+  --lora-modules "${LORA_NAME}=${LORA_DIR}" \
   --max-loras 1 \
   --max-lora-rank 32 \
+  --dtype auto \
   --max-model-len "${MAX_MODEL_LEN}" \
+  --max-num-seqs "${MAX_NUM_SEQS}" \
   --gpu-memory-utilization "${GPU_MEMORY_UTILIZATION}" \
-  --lora-modules "{\"name\":\"${VLLM_MODEL}\",\"path\":\"${LORA_REPO}\",\"base_model_name\":\"${BASE_MODEL}\"}" \
-  --api-key "${VLLM_API_KEY}" \
-  --no-enable-log-requests &
+  --enforce-eager \
+  > /tmp/vllm.log 2>&1 &
 
 VLLM_PID=$!
-trap 'kill ${VLLM_PID} 2>/dev/null || true' EXIT
+echo "[BAH] vLLM PID=${VLLM_PID}" >&2
 
-python /app/inference/wait_for_vllm.py
+python3 /app/inference/wait_for_vllm.py
 
-exec uvicorn backend.main:app --host 0.0.0.0 --port "${PUBLIC_PORT}"
+echo "[BAH] vLLM startup log:" >&2
+tail -n 80 /tmp/vllm.log >&2 || true
+
+exec uvicorn backend.main:app --host "${API_HOST}" --port "${API_PORT}"
