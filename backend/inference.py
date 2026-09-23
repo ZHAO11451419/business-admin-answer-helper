@@ -34,22 +34,24 @@ def build_messages(req: Any) -> list[dict[str, str]]:
         "detailed": "Give a detailed answer with headings, reasoning, formulas where relevant, and a concise interpretation.",
     }
 
-    context = (
-        f"Course: {req.course}\n"
-        f"Question type: {req.question_type}\n"
-        f"Language: {req.language}\n"
-        f"Detail level: {req.detail}\n"
-        f"Response instruction: {detail_map[req.detail]}"
-    )
-
     messages: list[dict[str, str]] = [
-        {"role": "system", "content": SYSTEM_PROMPT + "\n\n" + context}
+        {"role": "system", "content": SYSTEM_PROMPT}
     ]
 
     for item in req.history[-settings.max_history_messages :]:
         messages.append({"role": item.role, "content": item.content})
 
-    messages.append({"role": "user", "content": req.message})
+    lang_prefix = {
+        "English": "Answer in English.",
+        "Chinese": "请用中文回答以下问题，所有正文用中文，专业术语可保留英文。",
+        "Malay": "Jawab dalam bahasa Melayu.",
+    }.get(req.language, "Answer in English.")
+
+    user_prefix = (
+        f"[Settings: Course={req.course}, Type={req.question_type}, Detail={req.detail}]\n"
+        f"{lang_prefix}\n\n"
+    )
+    messages.append({"role": "user", "content": user_prefix + req.message})
     return messages
 
 

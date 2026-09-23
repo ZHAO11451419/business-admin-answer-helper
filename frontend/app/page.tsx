@@ -16,6 +16,13 @@ type Message = {
   feedback?: "positive" | "negative";
 };
 
+type Conversation = {
+  id: string;
+  title: string;
+  messages: Message[];
+  createdAt: string;
+};
+
 const COURSES = [
   "General Business",
   "Accounting",
@@ -62,13 +69,27 @@ function newId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function newConversation(): Conversation {
+  return {
+    id: newId(),
+    title: "New chat",
+    messages: [],
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function titleFromQuestion(q: string) {
+  return q.length > 40 ? q.slice(0, 40) + "…" : q;
+}
+
 function displayTime(value: string) {
   return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 export default function Home() {
   const [sessionId, setSessionId] = useState("");
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [currentId, setCurrentId] = useState("");
   const [input, setInput] = useState("");
   const [course, setCourse] = useState("General Business");
   const [questionType, setQuestionType] = useState("General");
@@ -90,19 +111,45 @@ export default function Home() {
     localStorage.setItem("bah-session-id", id);
     setSessionId(id);
 
-    const saved = localStorage.getItem("bah-messages");
+    const saved = localStorage.getItem("bah-conversations");
     if (saved) {
       try {
-        setMessages(JSON.parse(saved));
+        const convs: Conversation[] = JSON.parse(saved);
+        setConversations(convs);
+        if (convs.length > 0) {
+          setCurrentId(convs[convs.length - 1].id);
+        } else {
+          const fresh = newConversation();
+          setConversations([fresh]);
+          setCurrentId(fresh.id);
+        }
       } catch {
-        localStorage.removeItem("bah-messages");
+        localStorage.removeItem("bah-conversations");
+        const fresh = newConversation();
+        setConversations([fresh]);
+        setCurrentId(fresh.id);
       }
+    } else {
+      const fresh = newConversation();
+      setConversations([fresh]);
+      setCurrentId(fresh.id);
     }
   }, []);
 
+  const currentConv = conversations.find((c) => c.id === currentId);
+  const messages = currentConv?.messages ?? [];
+
+  function updateCurrent(updater: (conv: Conversation) => Conversation) {
+    setConversations((prev) =>
+      prev.map((c) => (c.id === currentId ? updater(c) : c)),
+    );
+  }
+
   useEffect(() => {
-    if (sessionId) localStorage.setItem("bah-messages", JSON.stringify(messages.slice(-40)));
-  }, [messages, sessionId]);
+    if (conversations.length > 0) {
+      localStorage.setItem("bah-conversations", JSON.stringify(conversations.slice(-20)));
+    }
+  }, [conversations]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -113,14 +160,16 @@ export default function Home() {
   }, []);
 
   const recentQuestions = useMemo(
-    () => messages.filter((m) => m.role === "user").slice(-5).reverse(),
-    [messages],
+    () => conversations.flatMap((c) => c.messages.filter((m) => m.role === "user")).slice(-8).reverse(),
+    [conversations],
   );
 
-  function clearChat() {
-    setMessages([]);
-    localStorage.removeItem("bah-messages");
+  function startNewChat() {
+    const fresh = newConversation();
+    setConversations((prev) => [...prev, fresh]);
+    setCurrentId(fresh.id);
     setError("");
+    setInput("");
   }
 
   function previousUserMessage(messageId: string) {
@@ -148,7 +197,11 @@ export default function Home() {
       createdAt: new Date().toISOString(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    updateCurrent((conv) => ({
+      ...conv,
+      title: conv.messages.length === 0 ? titleFromQuestion(question) : conv.title,
+      messages: [...conv.messages, userMessage],
+    }));
 
     try {
       const history = [...messages, userMessage]
@@ -167,17 +220,19 @@ export default function Home() {
         store_content: storeContent,
       });
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: result.message_id,
-          role: "assistant",
-          content: result.answer,
-          course,
-          questionType,
-          createdAt: new Date().toISOString(),
-        },
-      ]);
+      const assistantMessage: Message = {
+        id: result.message_id,
+        role: "assistant",
+        content: result.answer,
+        course,
+        questionType,
+        createdAt: new Date().toISOString(),
+      };
+
+      updateCurrent((conv) => ({
+        ...conv,
+        messages: [...conv.messages, assistantMessage],
+      }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
@@ -212,7 +267,10 @@ export default function Home() {
         answer_text: message.content,
       });
 
-      setMessages((prev) => prev.map((item) => (item.id === messageId ? { ...item, feedback: rating } : item)));
+      updateCurrent((conv) => ({
+        ...conv,
+        messages: conv.messages.map((item) => (item.id === messageId ? { ...item, feedback: rating } : item)),
+      }));
       setFeedbackOpen(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to save feedback.");
@@ -241,21 +299,25 @@ export default function Home() {
           </div>
         </div>
 
-        <button className="new-chat-button" onClick={clearChat}>
+        <button className="new-chat-button" onClick={startNewChat}>
           <span>＋</span> New chat
         </button>
 
         <div className="side-section">
-          <div className="side-label">Recent questions</div>
-          {recentQuestions.length ? (
-            recentQuestions.map((item) => (
-              <button key={item.id} className="history-item" onClick={() => void submit(item.content)}>
+          <div className="side-label">Recent chats</div>
+          {conversations.length ? (
+            [...conversations].reverse().map((conv) => (
+              <button
+                key={conv.id}
+                className={`history-item ${conv.id === currentId ? "active" : ""}`}
+                onClick={() => setCurrentId(conv.id)}
+              >
                 <span className="history-dot" />
-                <span>{item.content}</span>
+                <span>{conv.title}</span>
               </button>
             ))
           ) : (
-            <div className="empty-history">Your recent questions will appear here.</div>
+            <div className="empty-history">Your chats will appear here.</div>
           )}
         </div>
 

@@ -1,0 +1,39 @@
+# BAH Web 快速启动
+# 一键启动 GPU 推理容器 + FastAPI 网关
+# 前置条件：Docker Desktop + NVIDIA GPU（>=8GB VRAM）
+
+services:
+  bah-gpu:
+    build:
+      context: .
+      dockerfile: inference/Dockerfile
+    image: bah-gpu:v2
+    container_name: bah-gpu
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    ipc: host
+    environment:
+      # 模型配置
+      - BASE_MODEL=Qwen/Qwen2.5-3B-Instruct-AWQ
+      - LORA_REPO=zhaoweichang/business-admin-answer-helper
+      - LORA_NAME=bah
+      - HF_TOKEN=${HF_TOKEN:-}
+      # 显存配置（8GB 显卡用 0.85，16GB+ 可用 0.90 + fp16 原版）
+      - GPU_MEMORY_UTILIZATION=0.85
+      - MAX_MODEL_LEN=4096
+      - MAX_NUM_SEQS=4
+      # 后端配置
+      - INFERENCE_MODE=remote
+      - VLLM_API_KEY=${VLLM_API_KEY:-change-me}
+      - SUPABASE_URL=${SUPABASE_URL:-}
+      - SUPABASE_SECRET_KEY=${SUPABASE_SECRET_KEY:-}
+      - ADMIN_KEY=${ADMIN_KEY:-local-dev-admin-key}
+      - FRONTEND_ORIGIN=${FRONTEND_ORIGIN:-*}
